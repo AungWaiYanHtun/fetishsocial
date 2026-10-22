@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-SJS8CKH1B0');
+</script>
+<meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#100f0c">
+  <meta name="description" content="VideoSpace — discover and watch entertainment and educational videos.">
+  <title>VideoSpace — Watch Something Good</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script defer src="app.js"></script>
+  <script defer src="income-ui.js"></script>
+  <script defer src="vip-client.js"></script>
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="VideoSpace home">
+      <span class="brand-mark">F<span>✦</span></span>
+      <span>Video<span class="gold-text">Space</span><small>YOUR ENTERTAINMENT SPACE</small></span>
+    </a>
+    <div class="header-actions">
+      <span id="connection-status" class="connection"><i></i> Demo mode</span>
+      <button id="auth-open" class="button button-quiet">Sign in</button>
+      <button id="admin-open" class="button button-gold hidden">＋ Upload</button>
+      <button id="sign-out" class="button button-quiet hidden">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="income-toolbar" aria-label="Membership and referrals">
+      <div class="income-intro"><span class="eyebrow">MEMBERSHIP</span><strong>Unlock more with <span class="gold-text">VIP</span></strong><small>Premium access through Telegram Stars</small></div>
+      <button class="button button-gold" id="vip-buy">★ Get VIP</button>
+      <button class="button button-quiet" id="referral-share">↗ Invite friends</button>
+    </section>
+<section id="library" class="library-section">
+      <div class="section-heading">
+        <div><span class="eyebrow">THE COLLECTION</span><h2>Explore <span class="gold-text">videos</span></h2></div>
+        <span id="result-count" class="result-count">Loading collection…</span>
+      </div>
+      <div class="search-row">
+        <label class="searchbox"><span>⌕</span><input id="search" type="search" placeholder="Search titles, descriptions…" autocomplete="off"><kbd>⌕</kbd></label>
+        <button id="refresh" class="icon-button" aria-label="Refresh videos" title="Refresh">↻</button>
+      </div>
+      <div id="categories" class="category-row" aria-label="Video categories">
+        <button class="category active" data-category="All">✦ All videos</button>
+      </div>
+      <div id="notice" class="notice hidden" role="status"></div>
+      <div id="video-grid" class="video-grid">
+        <div class="loading-card"><span class="spinner"></span><p>Loading collection…</p></div>
+      </div>
+      <div id="empty-state" class="empty-state hidden"><div>✧</div><h3>No videos found</h3><p>Try another search or category.</p></div>
+    </section>
+  </main>
+
+  <div id="vip-status" class="income-message hidden" role="status" aria-live="polite"></div>
+  <div id="income-message" class="income-message hidden" role="status" aria-live="polite"></div>
+  <footer><span class="footer-brand">Video<span class="gold-text">Space</span></span><span>Learn. Explore. Enjoy.</span><span>© <span id="year"></span> VideoSpace</span></footer>
+
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="modal-backdrop" data-close="auth"></div>
+    <section class="modal-panel auth-panel">
+      <button class="modal-close" data-close="auth" aria-label="Close">×</button>
+      <span class="eyebrow">WELCOME BACK</span><h2 id="auth-title">Your space.<br><span class="gold-text">Your watchlist.</span></h2>
+      <p class="muted">Sign in to manage your account and access admin tools if permitted.</p>
+      <form id="auth-form">
+        <label>Email address<input id="auth-email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+        <label>Password<input id="auth-password" type="password" autocomplete="current-password" minlength="6" required placeholder="At least 6 characters"></label>
+        <button class="button button-gold full-width" type="submit" id="auth-submit">Sign in</button>
+      </form>
+      <button id="auth-toggle" class="text-button">Need an account? Create one</button>
+      <p id="auth-message" class="form-message" aria-live="polite"></p>
+      <p class="tiny-note">Passwords are handled by Supabase Auth and are not stored in this website's database.</p>
+    </section>
+  </div>
+
+  <div id="upload-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="upload-title">
+    <div class="modal-backdrop" data-close="upload"></div>
+    <section class="modal-panel upload-panel">
+      <button class="modal-close" data-close="upload" aria-label="Close">×</button>
+      <span class="eyebrow">CREATOR STUDIO</span><h2 id="upload-title">Add a <span class="gold-text">video</span></h2>
+      <p class="muted">Only approved administrators can publish videos.</p>
+      <form id="upload-form">
+        <label>Video title<input id="video-title" required maxlength="120" placeholder="Give your video a title"></label>
+        <label>Description<textarea id="video-description" rows="3" maxlength="2000" placeholder="What is this video about?"></textarea></label>
+        <label>Category<select id="video-category" required><option value="Entertainment">Entertainment</option><option value="Music">Music</option><option value="Gaming">Gaming</option><option value="Travel">Travel</option><option value="Education">Education</option><option value="Comedy">Comedy</option><option value="Lifestyle">Lifestyle</option></select></label>
+        <label>Thumbnail image (optional)<input id="video-thumbnail" type="file" accept="image/jpeg,image/png,image/webp"></label>
+        <label>Video file<input id="video-file" type="file" accept="video/mp4,video/webm,video/quicktime" required></label>
+        <div class="upload-hint">Recommended: MP4 / H.264. Keep uploads within your storage provider's configured limits.</div>
+        <button class="button button-gold full-width" id="upload-submit" type="submit">Upload and publish</button>
+        <div class="progress-track hidden" id="upload-progress"><span></span></div>
+      </form>
+      <p id="upload-message" class="form-message" aria-live="polite"></p>
+    </section>
+  </div>
+
+  <div id="player-modal" class="modal player-modal hidden" role="dialog" aria-modal="true" aria-label="Video player">
+    <div class="modal-backdrop" data-close="player"></div>
+    <section class="player-panel">
+      <button class="modal-close player-close" data-close="player" aria-label="Close">×</button>
+      <video id="video-player" controls playsinline preload="metadata"></video>
+      <div class="player-info"><span id="player-category" class="eyebrow"></span><h2 id="player-title"></h2><p id="player-description"></p><span id="player-views" class="muted"></span></div>
+    </section>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
