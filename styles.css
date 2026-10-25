@@ -68,28 +68,62 @@ body.modal-active [data-adzone="1129388"],
 body.vip-plans-open{overflow:hidden;}
 @media(max-width:390px){.vip-plans-overlay{padding:12px}.vip-plans-panel{width:min(100%,330px);padding:18px 13px 13px;border-radius:15px}.vip-plans-panel h2{font-size:21px}.vip-plan-option{padding:10px}}
 
-/* Custom native-style video options menu; native browser menus cannot be extended with app actions. */
-.video-stage{position:relative;background:#000;line-height:0}
-.video-stage video{display:block;width:100%;max-height:min(62vh,560px);background:#000}
-.player-options-toggle{position:absolute;z-index:5;right:25px;bottom:68px;width:34px;height:38px;border:0;border-radius:8px;background:rgba(0,0,0,.48);color:#fff;font-size:27px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;text-shadow:0 1px 4px #000}
-.player-options-toggle:focus-visible,.player-menu-item:focus-visible{outline:2px solid #e7c982;outline-offset:2px}
-.player-options-menu{position:absolute;z-index:6;right:12px;bottom:108px;width:min(245px,calc(100% - 24px));padding:4px 0;background:#383838;color:#f7f7f7;border:1px solid #ffffff1c;border-radius:3px;box-shadow:0 8px 24px #0009;line-height:1.3}
-.player-options-menu.hidden{display:none}
-.player-menu-item{display:flex;align-items:center;gap:13px;width:100%;min-height:48px;padding:12px 16px;border:0;background:transparent;color:#f7f7f7;text-align:left;text-decoration:none;font:400 14px/1.35 Arial,sans-serif;cursor:pointer}
-.player-menu-item:hover{background:#ffffff12}
-.player-menu-item span:first-child{width:20px;font-size:19px;text-align:center}
-#player-speed-value{margin-left:auto;color:#cfcfcf}
-.player-menu-delete{border-top:1px solid #ffffff24;color:#ffb8b8;font-weight:600}
-.player-menu-delete:hover{background:#662626}
-.player-menu-delete:disabled{opacity:.6;cursor:wait}
-.player-confirm-backdrop{position:fixed;inset:0;z-index:220;display:flex;align-items:center;justify-content:center;padding:20px;background:#000b;backdrop-filter:blur(5px)}
-.player-confirm-backdrop.hidden{display:none}
-.player-confirm-card{width:min(100%,350px);padding:23px 20px 18px;border:1px solid #b9975b;border-radius:20px;background:linear-gradient(145deg,#211c12,#100f0c 78%);box-shadow:0 20px 70px #000c;color:#f6f1e8}
-.player-confirm-card h3{margin:0 0 10px;font:600 23px/1.2 Georgia,serif;color:#f0d39b}
-.player-confirm-card p{margin:0 0 20px;color:#c8bdab;font-size:14px;line-height:1.55;overflow-wrap:anywhere}
-.player-confirm-actions{display:flex;justify-content:flex-end;gap:10px}
-.player-confirm-actions button{min-width:94px;padding:11px 15px;border-radius:11px;font-size:13px;font-weight:700;cursor:pointer}
-.player-confirm-cancel{border:1px solid #6b604b;background:#1b1812;color:#eee0bd}
-.player-confirm-delete{border:1px solid #b84d4d;background:linear-gradient(120deg,#8f3030,#5c1919);color:#fff}
-.player-confirm-delete:disabled{opacity:.6;cursor:wait}
-@media(max-width:520px){.player-options-toggle{right:24px;bottom:68px}.player-options-menu{right:10px;bottom:108px}}
+/* Compact custom video controls and options menu; native controls are intentionally replaced to avoid duplicate ⋮ buttons. */
+.video-stage{position:relative;background:#000;width:100%;aspect-ratio:16/9;overflow:hidden;touch-action:manipulation}
+.player-panel .video-stage video{width:100%;height:100%;max-height:65vh;aspect-ratio:auto;object-fit:contain;background:#000;display:block}
+.custom-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:54px;height:54px;border:0;border-radius:50%;background:#ffffffed;color:#15130f;font-size:25px;display:grid;place-items:center;box-shadow:0 3px 20px #0006}
+.player-menu-button{position:absolute;right:9px;top:9px;width:34px;height:34px;border:0;border-radius:50%;background:#080706c9;color:#fff;font-size:25px;line-height:1;display:grid;place-items:center;z-index:5}
+.player-menu{position:absolute;right:9px;top:48px;z-index:6;width:176px;padding:4px;background:#333;border:1px solid #ffffff20;border-radius:5px;box-shadow:0 8px 24px #0008}
+.player-menu-item{width:100%;min-height:36px;display:flex;align-items:center;gap:10px;padding:7px 9px;border:0;border-radius:3px;background:transparent;color:#f4f4f4;text-align:left;font-size:12px}
+.player-menu-item span{flex:1}.player-menu-item:hover,.player-speed-options button:hover{background:#ffffff18}.menu-chevron{flex:0!important;color:#bbb}
+.player-delete-item{color:#ffb3a9;border-top:1px solid #ffffff1c;border-radius:0;margin-top:2px}
+.player-speed-options{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:5px}.player-speed-options button{padding:7px 2px;border:0;border-radius:3px;background:#242424;color:#fff;font-size:11px}
+.custom-controls{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:28px 12px 9px;background:linear-gradient(transparent,#000c);color:white;font-size:12px;transition:opacity .2s}
+.custom-control-spacer{flex:1}.custom-controls button{border:0;background:transparent;color:#fff;padding:3px;font-size:17px;min-width:25px}.custom-controls input[type=range]{order:5;flex-basis:100%;width:100%;height:4px;accent-color:#f0d39b;margin:0;cursor:pointer}
+.video-stage.controls-hidden .custom-controls,.video-stage.controls-hidden .player-menu-button,.video-stage.controls-hidden .custom-play{opacity:0;pointer-events:none}
+.video-stage.menu-open .player-menu-button{opacity:1;pointer-events:auto}
+@media(max-width:520px){.player-menu{width:158px}.player-menu-item{min-height:33px;font-size:11px;padding:6px 8px}.custom-controls{gap:7px;padding:24px 9px 7px}.custom-play{width:48px;height:48px}}
+
+/* Keep the video options button beside fullscreen in the normal control row. */
+.custom-controls .player-menu-button{
+  position:static;
+  inset:auto;
+  width:25px;
+  height:28px;
+  min-width:25px;
+  flex:0 0 25px;
+  padding:3px 0;
+  margin:0;
+  border:0;
+  border-radius:6px;
+  background:transparent;
+  color:#fff;
+  font-size:22px;
+  line-height:1;
+  display:grid;
+  place-items:center;
+  z-index:7;
+}
+.video-stage .player-menu{
+  top:auto;
+  bottom:46px;
+  right:9px;
+}
+@media(max-width:520px){
+  .custom-controls .player-menu-button{width:24px;min-width:24px;flex-basis:24px;}
+  .video-stage .player-menu{bottom:43px;}
+}
+
+/* Compact custom confirmation dialog for video deletion only. */
+.delete-confirm-overlay{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:14px;background:#0009;backdrop-filter:blur(4px)}
+.delete-confirm-overlay.hidden{display:none!important}
+.delete-confirm-card{box-sizing:border-box;width:min(100%,290px);padding:17px 16px 15px;border:1px solid #8c713b66;border-radius:15px;background:#171510;color:#f4ead9;box-shadow:0 14px 42px #0009;text-align:center}
+.delete-confirm-icon{width:34px;height:34px;margin:0 auto 9px;display:grid;place-items:center;border-radius:50%;background:#3a2420;color:#f1b4a9;font-size:21px}
+.delete-confirm-card h2{margin:0 0 8px;color:#f0d39b;font-size:17px;line-height:1.25;font-weight:650}
+.delete-confirm-card p{margin:0;color:#e8e0d4;font-size:12px;line-height:1.45}
+.delete-confirm-card .delete-confirm-note{margin-top:5px;color:#a59d90;font-size:10px}
+.delete-confirm-actions{display:flex;gap:8px;margin-top:15px}
+.delete-confirm-actions button{flex:1;min-width:0;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer}
+.delete-confirm-cancel{border:1px solid #8c713b;background:#29251d;color:#f4e8d2}
+.delete-confirm-accept{border:1px solid #87362f;background:#87362f;color:#fff}
+.delete-confirm-actions button:focus-visible{outline:2px solid #f0d39b;outline-offset:2px}

@@ -19,12 +19,13 @@
   let db = null;
   let currentUser = null;
   let isAdmin = false;
+  let activePlayerVideo = null;
+  let controlsHideTimer = null;
   let videos = [];
   let categories = ["All"];
   let activeCategory = "All";
   let activeVideoView = "regular";
   let vipMembershipActive = false;
-  let activeVideo = null;
 
   // Avoid logging configuration details in production.
 
@@ -168,7 +169,7 @@
   function updateAuthUI() {
     const authOpen = $("auth-open");
     const signOut = $("sign-out");
-  const adminOpen = $("admin-open");
+    const adminOpen = $("admin-open");
     if (authOpen) authOpen.classList.toggle("hidden", !!currentUser);
     if (signOut) signOut.classList.toggle("hidden", !currentUser);
     if (adminOpen) adminOpen.classList.toggle("hidden", !isAdmin);
@@ -220,7 +221,7 @@
       // under RLS. VIP metadata is fetched separately from the authenticated backend
       // and is never requested from the public website without Telegram initData.
       const { data, error } = await db.from("videos")
-        .select("id,title,description,category,video_path,thumbnail_url,thumbnail_path,storage_bucket,views,created_at,is_vip")
+        .select("id,title,description,category,video_path,thumbnail_url,views,created_at,is_vip")
         .eq("published", true)
         .eq("is_vip", false)
         .order("created_at", { ascending: false })
@@ -251,6 +252,25 @@
           console.warn("VIP list unavailable:", vipError);
         }
       }
+
+      // In the signed-in admin dashboard/preview, allow admins to see VIP
+      // metadata directly when Telegram WebApp authentication is unavailable.
+      // RLS must grant SELECT only to admins; private video playback still uses
+      // the authenticated VIP backend and is not made public by this query.
+      if (currentUser && vipVideos.length === 0) {
+        const { data: adminVipData, error: adminVipError } = await db.from("videos")
+          .select("id,title,description,category,video_path,thumbnail_url,views,created_at,is_vip,storage_bucket")
+          .eq("published", true)
+          .eq("is_vip", true)
+          .order("created_at", { ascending: false })
+          .limit(100);
+
+        if (adminVipError) {
+          console.warn("Admin VIP list query failed:", adminVipError);
+        } else {
+          vipVideos = (adminVipData || []).map((v) => ({ ...v, is_vip: true }));
+        }
+      }
       videos = [...freeVideos, ...vipVideos]
         .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
         .slice(0, 100);
@@ -278,8 +298,30 @@
 
     let playbackUrl = "";
 
-    if (v.is_vip) {
-      // Server authorization is required for every VIP playback attempt.
+    if (v.is_vip && isAdmin && currentUser && db) {
+      // Admins signed in through Supabase may preview private VIP objects directly.
+      // Storage remains private; RLS must allow only admins to read vip-videos.
+      const bucket = v.storage_bucket || cfg.VIP_VIDEO_BUCKET || "vip-videos";
+      const path = v.video_path;
+      if (!path) {
+        toast("This VIP video has no storage path. Re-upload or repair its video record.");
+        return;
+      }
+      try {
+        const { data, error } = await db.storage.from(bucket).createSignedUrl(path, 60 * 10);
+        if (error) throw error;
+        playbackUrl = data?.signedUrl || "";
+        if (!playbackUrl || !/^https:\/\//i.test(playbackUrl)) {
+          throw new Error("Supabase did not return a valid signed URL.");
+        }
+        vipMembershipActive = true;
+      } catch (e) {
+        console.error("Admin VIP playback failed:", e);
+        toast("Admin preview failed. Check the private VIP bucket SELECT policy.");
+        return;
+      }
+    } else if (v.is_vip) {
+      // Non-admin VIP playback still requires server-verified Telegram membership.
       const tg = window.Telegram?.WebApp;
       const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
       if (!tg?.initData || !api) {
@@ -331,11 +373,7 @@
       }
     }
 
-    activeVideo = v;
-    const deleteButton = $("player-delete");
-    if (deleteButton) deleteButton.classList.toggle("hidden", !(isAdmin && currentUser));
-    closePlayerOptionsMenu();
-
+    activePlayerVideo = v;
     const player = $("video-player");
     if (!player) {
       toast("Video player element is missing from index.html.");
@@ -343,6 +381,9 @@
     }
 
     player.src = playbackUrl;
+    if (deleteButton) deleteButton.classList.toggle("hidden", !isAdmin);
+    if (stageEl) { stageEl.classList.remove("controls-hidden", "menu-open"); }
+    if (menuEl) menuEl.classList.add("hidden");
     const category = $("player-category");
     const title = $("player-title");
     const description = $("player-description");
@@ -540,148 +581,6 @@
     });
   }
 
-const playerDelete = $("player-delete");
-  const playerOptionsToggle = $("player-options-toggle");
-  const playerOptionsMenu = $("player-options-menu");
-  const playerDownload = $("player-download");
-  const playerSpeed = $("player-speed");
-  const playerSpeedValue = $("player-speed-value");
-  const player = $("video-player");
-  let playbackSpeedIndex = 0;
-  const playbackSpeeds = [1, 1.25, 1.5, 1.75, 2, 0.5, 0.75];
-
-  function closePlayerOptionsMenu() {
-    const menu = $("player-options-menu");
-    const toggle = $("player-options-toggle");
-    if (menu) menu.classList.add("hidden");
-    if (toggle) toggle.setAttribute("aria-expanded", "false");
-  }
-
-  function openDeleteConfirmation(title) {
-    return new Promise((resolve) => {
-      const old = $("player-delete-confirm");
-      if (old) old.remove();
-      const backdrop = document.createElement("div");
-      backdrop.id = "player-delete-confirm";
-      backdrop.className = "player-confirm-backdrop";
-      backdrop.innerHTML = `
-        <section class="player-confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="player-confirm-title" aria-describedby="player-confirm-message">
-          <h3 id="player-confirm-title">Delete this video?</h3>
-          <p id="player-confirm-message"></p>
-          <div class="player-confirm-actions">
-            <button type="button" class="player-confirm-cancel">Cancel</button>
-            <button type="button" class="player-confirm-delete">Delete</button>
-          </div>
-        </section>`;
-      backdrop.querySelector("#player-confirm-message").textContent =
-        `Are you sure you want to permanently delete “${title}”? The video and its database record will be removed. This action cannot be undone.`;
-      const finish = (value) => {
-        backdrop.remove();
-        resolve(value);
-      };
-      backdrop.querySelector(".player-confirm-cancel").addEventListener("click", () => finish(false));
-      backdrop.querySelector(".player-confirm-delete").addEventListener("click", () => finish(true));
-      backdrop.addEventListener("click", (event) => {
-        if (event.target === backdrop) finish(false);
-      });
-      document.addEventListener("keydown", function escapeConfirm(event) {
-        if (event.key === "Escape" && document.body.contains(backdrop)) {
-          document.removeEventListener("keydown", escapeConfirm);
-          finish(false);
-        }
-      });
-      document.body.appendChild(backdrop);
-      backdrop.querySelector(".player-confirm-cancel").focus();
-    });
-  }
-
-  if (playerOptionsToggle && playerOptionsMenu) {
-    playerOptionsToggle.addEventListener("click", () => {
-      const willOpen = playerOptionsMenu.classList.contains("hidden");
-      if (playerDelete) playerDelete.classList.toggle("hidden", !(isAdmin && currentUser));
-      playerOptionsMenu.classList.toggle("hidden", !willOpen);
-      playerOptionsToggle.setAttribute("aria-expanded", String(willOpen));
-      if (willOpen && playerDownload && activeVideo) {
-        playerDownload.href = player?.currentSrc || player?.src || "#";
-        playerDownload.setAttribute("download", (activeVideo.title || "video").replace(/[^a-z0-9._ -]/gi, "_"));
-      }
-    });
-    document.addEventListener("click", (event) => {
-      if (!playerOptionsMenu.contains(event.target) && !playerOptionsToggle.contains(event.target)) {
-        closePlayerOptionsMenu();
-      }
-    });
-  }
-
-  if (playerSpeed && player) {
-    playerSpeed.addEventListener("click", () => {
-      playbackSpeedIndex = (playbackSpeedIndex + 1) % playbackSpeeds.length;
-      player.playbackRate = playbackSpeeds[playbackSpeedIndex];
-      if (playerSpeedValue) playerSpeedValue.textContent = `${playbackSpeeds[playbackSpeedIndex]}×`;
-    });
-  }
-
-  if (playerDelete) {
-playerDelete.addEventListener("click", async () => {
-  if (!db || !isAdmin || !currentUser || !activeVideo) {
-    toast("Administrator access required.");
-    playerDelete.classList.add("hidden");
-    return;
-  }
-
-  const video = activeVideo;
-  const title = video.title || "this video";
-  closePlayerOptionsMenu();
-  const confirmed = await openDeleteConfirmation(title);
-  if (!confirmed) return;
-
-  playerDelete.disabled = true;
-  playerDelete.textContent = "Deleting…";
-  try {
-    // Re-check the current authenticated user's admin role immediately before deletion.
-    const { data: adminResult, error: adminError } = await db.rpc("is_admin");
-    if (adminError || adminResult !== true) throw new Error("Administrator permission could not be verified.");
-
-    const videoBucket = video.storage_bucket || (video.is_vip
-      ? (cfg.VIP_VIDEO_BUCKET || "vip-videos")
-      : (cfg.VIDEO_BUCKET || "videos"));
-    if (video.video_path) {
-      const result = await db.storage.from(videoBucket).remove([video.video_path]);
-      if (result.error) throw new Error(`Could not delete video file: ${result.error.message}`);
-    }
-    if (video.thumbnail_path) {
-      const result = await db.storage.from(cfg.THUMBNAIL_BUCKET || "thumbnails").remove([video.thumbnail_path]);
-      if (result.error) throw new Error(`Could not delete thumbnail: ${result.error.message}`);
-    }
-
-    // This SECURITY DEFINER RPC independently enforces admin permission server-side.
-    const { data: deleted, error: deleteError } = await db.rpc("admin_delete_video", {
-      video_id_input: video.id
-    });
-    if (deleteError) throw deleteError;
-    if (deleted !== true) throw new Error("The database did not confirm deletion.");
-
-    const player = $("video-player");
-    if (player) {
-      player.pause();
-      player.removeAttribute("src");
-      player.load();
-    }
-    activeVideo = null;
-    hideModal("player");
-    toast("Video and database record deleted.");
-    await loadVideos();
-  } catch (err) {
-    console.error("Admin video deletion failed:", err);
-    toast(`Delete failed: ${err.message || "Please check admin and Storage policies."}`);
-  } finally {
-    playerDelete.disabled = false;
-    playerDelete.textContent = "Delete video";
-  }
-});
-  }
-
-
   const adminOpen = $("admin-open");
   if (adminOpen) {
     adminOpen.addEventListener("click", () => {
@@ -784,7 +683,7 @@ playerDelete.addEventListener("click", async () => {
           title: $("video-title")?.value.trim() || "",
           description: $("video-description")?.value.trim() || "",
           category: $("video-category")?.value || "Entertainment",
-          video_url: videoPublicUrl,
+          video_url: videoPublicUrl || videoPath,
           video_path: videoPath,
           thumbnail_url: thumbnailUrl,
           thumbnail_path: thumbPath,
@@ -816,17 +715,133 @@ playerDelete.addEventListener("click", async () => {
     });
   }
 
+  // Compact custom controls/menu for the video player.
+  const playerEl = $("video-player");
+  const stageEl = $("video-stage");
+  const menuEl = $("player-menu");
+  const menuButton = $("player-menu-button");
+  const playButton = $("custom-play");
+  const controlsEl = $("custom-controls");
+  const seekEl = $("player-seek");
+  const timeEl = $("player-current-time");
+  const deleteButton = $("player-delete");
+  function formatPlayerTime(seconds) {
+    if (!Number.isFinite(seconds)) return "0:00";
+    const n = Math.max(0, Math.floor(seconds));
+    return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`;
+  }
+  function showPlayerControls() {
+    if (!stageEl) return;
+    stageEl.classList.remove("controls-hidden");
+    clearTimeout(controlsHideTimer);
+    if (playerEl && !playerEl.paused && !(stageEl.classList.contains("menu-open"))) {
+      controlsHideTimer = setTimeout(() => stageEl.classList.add("controls-hidden"), 2600);
+    }
+  }
+  function closePlayerMenu() {
+    if (menuEl) menuEl.classList.add("hidden");
+    if (stageEl) stageEl.classList.remove("menu-open");
+    if (menuButton) menuButton.setAttribute("aria-expanded", "false");
+    const speeds = $("player-speed-options");
+    if (speeds) speeds.classList.add("hidden");
+    showPlayerControls();
+  }
+  if (playerEl && stageEl) {
+    playButton?.addEventListener("click", () => { if (playerEl.paused) playerEl.play().catch(() => {}); else playerEl.pause(); showPlayerControls(); });
+    playerEl.addEventListener("click", () => { if (playerEl.paused) playerEl.play().catch(() => {}); else showPlayerControls(); });
+    playerEl.addEventListener("play", () => { if (playButton) playButton.textContent = "Ⅱ"; showPlayerControls(); });
+    playerEl.addEventListener("pause", () => { if (playButton) playButton.textContent = "▶"; stageEl.classList.remove("controls-hidden"); clearTimeout(controlsHideTimer); });
+    playerEl.addEventListener("timeupdate", () => {
+      if (timeEl) timeEl.textContent = `${formatPlayerTime(playerEl.currentTime)} / ${formatPlayerTime(playerEl.duration)}`;
+      if (seekEl && Number.isFinite(playerEl.duration) && playerEl.duration > 0 && !seekEl.matches(":active")) seekEl.value = String(Math.round(playerEl.currentTime / playerEl.duration * 1000));
+    });
+    playerEl.addEventListener("loadedmetadata", () => { if (timeEl) timeEl.textContent = `0:00 / ${formatPlayerTime(playerEl.duration)}`; if (seekEl) seekEl.value = "0"; });
+    stageEl.addEventListener("pointermove", showPlayerControls);
+    stageEl.addEventListener("touchstart", showPlayerControls, { passive: true });
+    seekEl?.addEventListener("input", () => { if (Number.isFinite(playerEl.duration)) playerEl.currentTime = Number(seekEl.value) / 1000 * playerEl.duration; showPlayerControls(); });
+    $("player-mute")?.addEventListener("click", (e) => { playerEl.muted = !playerEl.muted; e.currentTarget.textContent = playerEl.muted ? "🔇" : "🔊"; showPlayerControls(); });
+    $("player-fullscreen")?.addEventListener("click", async () => {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else if (stageEl.requestFullscreen) await stageEl.requestFullscreen();
+        else if (playerEl.webkitEnterFullscreen) playerEl.webkitEnterFullscreen();
+      } catch (err) { console.warn("Fullscreen unavailable:", err); }
+      showPlayerControls();
+    });
+    menuButton?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opening = menuEl.classList.contains("hidden");
+      menuEl.classList.toggle("hidden", !opening);
+      stageEl.classList.toggle("menu-open", opening);
+      menuButton.setAttribute("aria-expanded", String(opening));
+      if (opening) { stageEl.classList.remove("controls-hidden"); clearTimeout(controlsHideTimer); }
+      else showPlayerControls();
+    });
+    $("player-download")?.addEventListener("click", () => {
+      const url = playerEl.currentSrc || playerEl.src;
+      if (!url) { toast("Video download is unavailable."); return; }
+      const a = document.createElement("a"); a.href = url; a.download = (activePlayerVideo?.title || "video") + ".mp4"; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); closePlayerMenu();
+    });
+    $("player-speed-button")?.addEventListener("click", () => $("player-speed-options")?.classList.toggle("hidden"));
+    document.querySelectorAll("[data-speed]").forEach((b) => b.addEventListener("click", () => { playerEl.playbackRate = Number(b.dataset.speed); closePlayerMenu(); toast(`Playback speed: ${b.textContent}`); }));
+    const deleteConfirmDialog = $("delete-confirm-dialog");
+    const deleteConfirmMessage = $("delete-confirm-message");
+    const confirmDelete = (title) => new Promise((resolve) => {
+      if (!deleteConfirmDialog) { resolve(window.confirm(`Delete “${title}”? This cannot be undone.`)); return; }
+      if (deleteConfirmMessage) deleteConfirmMessage.textContent = `Are you sure you want to delete “${title}”?`;
+      deleteConfirmDialog.classList.remove("hidden");
+      const cancel = $("delete-confirm-cancel");
+      const accept = $("delete-confirm-accept");
+      const finish = (answer) => {
+        deleteConfirmDialog.classList.add("hidden");
+        cancel?.removeEventListener("click", onCancel);
+        accept?.removeEventListener("click", onAccept);
+        deleteConfirmDialog.removeEventListener("click", onBackdrop);
+        document.removeEventListener("keydown", onKey);
+        resolve(answer);
+      };
+      const onCancel = () => finish(false);
+      const onAccept = () => finish(true);
+      const onBackdrop = (event) => { if (event.target === deleteConfirmDialog) finish(false); };
+      const onKey = (event) => { if (event.key === "Escape") finish(false); };
+      cancel?.addEventListener("click", onCancel);
+      accept?.addEventListener("click", onAccept);
+      deleteConfirmDialog.addEventListener("click", onBackdrop);
+      document.addEventListener("keydown", onKey);
+      accept?.focus();
+    });
+    deleteButton?.addEventListener("click", async () => {
+      if (!activePlayerVideo || !isAdmin || !currentUser || !db) { toast("Only an authenticated administrator can delete videos."); return; }
+      const v = activePlayerVideo;
+      if (v.is_vip) { toast("VIP video deletion must be handled by the authorized VIP API."); return; }
+      if (!(await confirmDelete(v.title || "this video"))) return;
+      deleteButton.disabled = true;
+      try {
+        const bucket = cfg.VIDEO_BUCKET || "videos";
+        const { error } = await db.from("videos").delete().eq("id", v.id);
+        if (error) throw error;
+        let storageWarning = false;
+        if (v.video_path) {
+          const { error: storageError } = await db.storage.from(bucket).remove([v.video_path]);
+          if (storageError) { storageWarning = true; console.warn("Video row deleted, but storage cleanup failed:", storageError.message); }
+        }
+        playerEl.pause(); playerEl.removeAttribute("src"); playerEl.load(); hideModal("player");
+        toast(storageWarning ? "Video record deleted; storage cleanup needs admin review." : "Video deleted successfully."); await loadVideos();
+      } catch (err) { console.error("Video delete failed:", err); toast("Delete failed. Check administrator permissions and storage policies."); }
+      finally { deleteButton.disabled = false; }
+    });
+    document.addEventListener("click", (e) => { if (menuEl && !menuEl.classList.contains("hidden") && !menuEl.contains(e.target) && e.target !== menuButton) closePlayerMenu(); });
+  }
+
   document.querySelectorAll("[data-close]").forEach((el) => {
     el.addEventListener("click", () => {
       const name = el.dataset.close;
       if (name === "player") {
-        activeVideo = null;
-        closePlayerOptionsMenu();
-        const playerDelete = $("player-delete");
-        if (playerDelete) playerDelete.classList.add("hidden");
         const player = $("video-player");
         if (player) {
           player.pause();
+          closePlayerMenu();
+          if (stageEl) stageEl.classList.remove("controls-hidden", "menu-open");
           player.removeAttribute("src");
           player.load();
         }
