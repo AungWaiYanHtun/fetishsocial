@@ -57,82 +57,95 @@
   }
 
   async function loadPackages(show = false) {
-    const container = document.getElementById("vip-packages");
-
-    // If the page has no package container, create one.
-    let target = container;
+    let target = document.getElementById("vip-packages");
 
     if (!target) {
-      const anchor =
-        document.getElementById("vip-status") ||
-        document.querySelector("main") ||
-        document.body;
-
-      target = document.createElement("section");
+      target = document.createElement("div");
       target.id = "vip-packages";
-      target.style.cssText =
-        "display:none;padding:16px;margin:16px auto;border-radius:14px;max-width:900px;" +
-        "background:#0b0a08;border:1px solid #b88a2e;color:#f7e4b2;";
-      target.innerHTML = '<button type="button" id="vip-plans-close" style="float:right">✕</button>';
-      anchor.insertAdjacentElement("afterend", target);
-      target.querySelector("#vip-plans-close")?.addEventListener("click", () => { target.style.display = "none"; });
+      target.className = "vip-plans-overlay";
+      target.setAttribute("role", "dialog");
+      target.setAttribute("aria-modal", "true");
+      target.setAttribute("aria-labelledby", "vip-plans-title");
+      target.innerHTML = `
+        <button type="button" class="vip-plans-backdrop" aria-label="Close VIP plans"></button>
+        <section class="vip-plans-panel">
+          <button type="button" class="vip-plans-close" aria-label="Close VIP plans">×</button>
+          <h2 id="vip-plans-title">Choose Your VIP Plan</h2>
+          <p class="vip-plans-subtitle">Choose a plan, then continue to payment.</p>
+          <div class="vip-plans-list" id="vip-plans-list"></div>
+          <button type="button" class="vip-plans-confirm" id="vip-plans-confirm" disabled>★ Get VIP</button>
+        </section>`;
+      document.body.appendChild(target);
+
+      const close = () => {
+        target.classList.remove("is-open");
+        document.body.classList.remove("vip-plans-open");
+      };
+      target.querySelector(".vip-plans-close")?.addEventListener("click", close);
+      target.querySelector(".vip-plans-backdrop")?.addEventListener("click", close);
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && target.classList.contains("is-open")) close();
+      });
     }
 
-    if (!show) { target.style.display = "none"; return; }
-    target.style.display = "block";
-    target.textContent = "Loading VIP packages…";
+    if (!show) {
+      target.classList.remove("is-open");
+      document.body.classList.remove("vip-plans-open");
+      return;
+    }
+
+    target.classList.add("is-open");
+    document.body.classList.add("vip-plans-open");
+    const list = target.querySelector("#vip-plans-list");
+    const confirm = target.querySelector("#vip-plans-confirm");
+    list.textContent = "Loading VIP plans…";
+    confirm.disabled = true;
+    confirm.textContent = "★ Get VIP";
 
     try {
       const data = await request("/api/packages");
-      const packages = Array.isArray(data.packages)
-        ? data.packages
-        : [];
-
-      target.replaceChildren();
-
-      const heading = document.createElement("h2");
-      heading.textContent = "Choose Your VIP Plan";
-      target.appendChild(heading);
+      const packages = Array.isArray(data.packages) ? data.packages : [];
+      list.replaceChildren();
 
       if (!packages.length) {
-        target.textContent = "No VIP packages are available right now.";
+        list.textContent = "No VIP packages are available right now.";
         return;
       }
 
-      packages.forEach((plan) => {
-        const card = document.createElement("div");
-        card.style.cssText =
-          "padding:14px;margin:12px 0;border:1px solid #6d5528;" +
-          "border-radius:14px;background:linear-gradient(120deg,#18140c,#080808);";
-
-        const title = document.createElement("h3");
+      let selectedPlan = null;
+      packages.forEach((plan, index) => {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "vip-plan-option";
+        card.setAttribute("aria-pressed", "false");
+        const title = document.createElement("strong");
         title.textContent = plan.name || "VIP Membership";
-
-        const duration = document.createElement("p");
-        duration.textContent =
-          `${Number(plan.duration_days) || 0} days`;
-
-        const price = document.createElement("p");
-        price.textContent =
-          `⭐ ${Number(plan.stars_price) || 0} Telegram Stars`;
-
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = "Get VIP";
-        button.style.cssText =
-          "padding:10px 18px;border:1px solid #f2ce72;border-radius:10px;" +
-          "background:linear-gradient(120deg,#ffe8a1,#c8952c);color:#160f03;cursor:pointer;font-weight:bold;";
-
-        button.addEventListener("click", () => {
-          startPurchase(plan, button);
+        const duration = document.createElement("span");
+        duration.textContent = `${Number(plan.duration_days) || 0} days`;
+        const price = document.createElement("span");
+        price.className = "vip-plan-price";
+        price.textContent = `⭐ ${Number(plan.stars_price) || 0} Telegram Stars`;
+        card.append(title, duration, price);
+        card.addEventListener("click", () => {
+          selectedPlan = plan;
+          list.querySelectorAll(".vip-plan-option").forEach((item) => {
+            item.classList.remove("selected");
+            item.setAttribute("aria-pressed", "false");
+          });
+          card.classList.add("selected");
+          card.setAttribute("aria-pressed", "true");
+          confirm.disabled = false;
         });
-
-        card.append(title, duration, price, button);
-        target.appendChild(card);
+        list.appendChild(card);
+        if (index === 0) card.setAttribute("tabindex", "0");
       });
+
+      confirm.onclick = () => {
+        if (!selectedPlan) return;
+        startPurchase(selectedPlan, confirm);
+      };
     } catch (error) {
-      target.textContent =
-        "Could not load VIP packages. Please try again later.";
+      list.textContent = "Could not load VIP packages. Please try again later.";
       console.error("VIP packages error:", error);
     }
   }
