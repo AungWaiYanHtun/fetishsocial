@@ -9,6 +9,12 @@
   const cfg = window.VIDEOSPACE_CONFIG || {};
   const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
   const tg = window.Telegram?.WebApp;
+  // Package list changes infrequently; reuse it briefly so opening the modal again is fast.
+  const PACKAGE_CACHE_MS = 60_000;
+  const PACKAGE_TIMEOUT_MS = 8_000;
+  let packageCache = null;
+  let packageCacheAt = 0;
+  let packageRequest = null;
 
   function init() {
     const statusEl = document.getElementById("vip-status");
@@ -42,10 +48,23 @@
       headers["X-Telegram-Init-Data"] = tg.initData;
     }
 
-    const response = await fetch(`${api}${path}`, {
-      ...options,
-      headers
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PACKAGE_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(`${api}${path}`, {
+        ...options,
+        headers,
+        signal: options.signal || controller.signal
+      });
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw new Error("VIP service is taking too long to respond. Please retry.");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
 
     const data = await response.json().catch(() => ({}));
 
@@ -54,6 +73,25 @@
     }
 
     return data;
+  }
+
+  async function getPackages() {
+    if (packageCache && Date.now() - packageCacheAt < PACKAGE_CACHE_MS) {
+      return packageCache;
+    }
+    if (packageRequest) return packageRequest;
+
+    packageRequest = request("/api/packages")
+      .then((data) => {
+        const packages = Array.isArray(data.packages) ? data.packages : [];
+        packageCache = packages;
+        packageCacheAt = Date.now();
+        return packages;
+      })
+      .finally(() => {
+        packageRequest = null;
+      });
+    return packageRequest;
   }
 
   async function loadPackages(show = false) {
@@ -98,13 +136,14 @@
     document.body.classList.add("vip-plans-open");
     const list = target.querySelector("#vip-plans-list");
     const confirm = target.querySelector("#vip-plans-confirm");
-    list.textContent = "Loading VIP plans…";
+    // Render cached data immediately when available; otherwise show a retry action on failure.
+    const hasFreshCache = packageCache && Date.now() - packageCacheAt < PACKAGE_CACHE_MS;
+    list.textContent = hasFreshCache ? "" : "Loading VIP plans…";
     confirm.disabled = true;
     confirm.textContent = "★ Get VIP";
 
     try {
-      const data = await request("/api/packages");
-      const packages = Array.isArray(data.packages) ? data.packages : [];
+      const packages = await getPackages();
       list.replaceChildren();
 
       if (!packages.length) {
@@ -145,14 +184,41 @@
         startPurchase(selectedPlan, confirm);
       };
     } catch (error) {
-      list.textContent = "Could not load VIP packages. Please try again later.";
+      list.replaceChildren();
+      const message = document.createElement("p");
+      message.textContent = error.message || "Could not load VIP packages.";
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "vip-plan-option";
+      retry.textContent = "Retry loading plans";
+      retry.addEventListener("click", () => {
+        packageCache = null;
+        packageCacheAt = 0;
+        loadPackages(true);
+      });
+      list.append(message, retry);
       console.error("VIP packages error:", error);
     }
   }
 
+  function openBotForPlan(plan) {
+    const username = String(cfg.TELEGRAM_BOT_USERNAME || "Fetish_OnlyFan_bot")
+      .replace(/^@/, "")
+      .trim();
+    // Telegram deep-link payloads support letters, numbers, "_" and "-".
+    const rawId = String(plan?.id || "");
+    const safeId = rawId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
+    const startPayload = safeId ? `vip_${safeId}` : "vip";
+    const url = `https://t.me/${encodeURIComponent(username)}?start=${encodeURIComponent(startPayload)}`;
+    window.location.href = url;
+  }
+
   async function startPurchase(plan, button) {
+    // A normal browser has no Telegram initData. Hand off to the bot and pass the
+    // selected package as a Telegram deep-link payload; the bot backend must handle
+    // /start vip_<package-id> to preselect/create the matching invoice.
     if (!tg?.initData) {
-      alert("Please open this page from the official Telegram bot.");
+      openBotForPlan(plan);
       return;
     }
 
