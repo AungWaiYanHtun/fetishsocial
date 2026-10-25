@@ -24,6 +24,7 @@
   let activeCategory = "All";
   let activeVideoView = "regular";
   let vipMembershipActive = false;
+  let activeVideo = null;
 
   // Avoid logging configuration details in production.
 
@@ -167,7 +168,7 @@
   function updateAuthUI() {
     const authOpen = $("auth-open");
     const signOut = $("sign-out");
-    const adminOpen = $("admin-open");
+  const adminOpen = $("admin-open");
     if (authOpen) authOpen.classList.toggle("hidden", !!currentUser);
     if (signOut) signOut.classList.toggle("hidden", !currentUser);
     if (adminOpen) adminOpen.classList.toggle("hidden", !isAdmin);
@@ -219,7 +220,7 @@
       // under RLS. VIP metadata is fetched separately from the authenticated backend
       // and is never requested from the public website without Telegram initData.
       const { data, error } = await db.from("videos")
-        .select("id,title,description,category,video_path,thumbnail_url,views,created_at,is_vip")
+        .select("id,title,description,category,video_path,thumbnail_url,thumbnail_path,storage_bucket,views,created_at,is_vip")
         .eq("published", true)
         .eq("is_vip", false)
         .order("created_at", { ascending: false })
@@ -329,6 +330,11 @@
         return;
       }
     }
+
+    activeVideo = v;
+    const deleteButton = $("player-delete");
+    if (deleteButton) deleteButton.classList.toggle("hidden", !(isAdmin && currentUser));
+    closePlayerOptionsMenu();
 
     const player = $("video-player");
     if (!player) {
@@ -534,6 +540,148 @@
     });
   }
 
+const playerDelete = $("player-delete");
+  const playerOptionsToggle = $("player-options-toggle");
+  const playerOptionsMenu = $("player-options-menu");
+  const playerDownload = $("player-download");
+  const playerSpeed = $("player-speed");
+  const playerSpeedValue = $("player-speed-value");
+  const player = $("video-player");
+  let playbackSpeedIndex = 0;
+  const playbackSpeeds = [1, 1.25, 1.5, 1.75, 2, 0.5, 0.75];
+
+  function closePlayerOptionsMenu() {
+    const menu = $("player-options-menu");
+    const toggle = $("player-options-toggle");
+    if (menu) menu.classList.add("hidden");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+  }
+
+  function openDeleteConfirmation(title) {
+    return new Promise((resolve) => {
+      const old = $("player-delete-confirm");
+      if (old) old.remove();
+      const backdrop = document.createElement("div");
+      backdrop.id = "player-delete-confirm";
+      backdrop.className = "player-confirm-backdrop";
+      backdrop.innerHTML = `
+        <section class="player-confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="player-confirm-title" aria-describedby="player-confirm-message">
+          <h3 id="player-confirm-title">Delete this video?</h3>
+          <p id="player-confirm-message"></p>
+          <div class="player-confirm-actions">
+            <button type="button" class="player-confirm-cancel">Cancel</button>
+            <button type="button" class="player-confirm-delete">Delete</button>
+          </div>
+        </section>`;
+      backdrop.querySelector("#player-confirm-message").textContent =
+        `Are you sure you want to permanently delete “${title}”? The video and its database record will be removed. This action cannot be undone.`;
+      const finish = (value) => {
+        backdrop.remove();
+        resolve(value);
+      };
+      backdrop.querySelector(".player-confirm-cancel").addEventListener("click", () => finish(false));
+      backdrop.querySelector(".player-confirm-delete").addEventListener("click", () => finish(true));
+      backdrop.addEventListener("click", (event) => {
+        if (event.target === backdrop) finish(false);
+      });
+      document.addEventListener("keydown", function escapeConfirm(event) {
+        if (event.key === "Escape" && document.body.contains(backdrop)) {
+          document.removeEventListener("keydown", escapeConfirm);
+          finish(false);
+        }
+      });
+      document.body.appendChild(backdrop);
+      backdrop.querySelector(".player-confirm-cancel").focus();
+    });
+  }
+
+  if (playerOptionsToggle && playerOptionsMenu) {
+    playerOptionsToggle.addEventListener("click", () => {
+      const willOpen = playerOptionsMenu.classList.contains("hidden");
+      if (playerDelete) playerDelete.classList.toggle("hidden", !(isAdmin && currentUser));
+      playerOptionsMenu.classList.toggle("hidden", !willOpen);
+      playerOptionsToggle.setAttribute("aria-expanded", String(willOpen));
+      if (willOpen && playerDownload && activeVideo) {
+        playerDownload.href = player?.currentSrc || player?.src || "#";
+        playerDownload.setAttribute("download", (activeVideo.title || "video").replace(/[^a-z0-9._ -]/gi, "_"));
+      }
+    });
+    document.addEventListener("click", (event) => {
+      if (!playerOptionsMenu.contains(event.target) && !playerOptionsToggle.contains(event.target)) {
+        closePlayerOptionsMenu();
+      }
+    });
+  }
+
+  if (playerSpeed && player) {
+    playerSpeed.addEventListener("click", () => {
+      playbackSpeedIndex = (playbackSpeedIndex + 1) % playbackSpeeds.length;
+      player.playbackRate = playbackSpeeds[playbackSpeedIndex];
+      if (playerSpeedValue) playerSpeedValue.textContent = `${playbackSpeeds[playbackSpeedIndex]}×`;
+    });
+  }
+
+  if (playerDelete) {
+playerDelete.addEventListener("click", async () => {
+  if (!db || !isAdmin || !currentUser || !activeVideo) {
+    toast("Administrator access required.");
+    playerDelete.classList.add("hidden");
+    return;
+  }
+
+  const video = activeVideo;
+  const title = video.title || "this video";
+  closePlayerOptionsMenu();
+  const confirmed = await openDeleteConfirmation(title);
+  if (!confirmed) return;
+
+  playerDelete.disabled = true;
+  playerDelete.textContent = "Deleting…";
+  try {
+    // Re-check the current authenticated user's admin role immediately before deletion.
+    const { data: adminResult, error: adminError } = await db.rpc("is_admin");
+    if (adminError || adminResult !== true) throw new Error("Administrator permission could not be verified.");
+
+    const videoBucket = video.storage_bucket || (video.is_vip
+      ? (cfg.VIP_VIDEO_BUCKET || "vip-videos")
+      : (cfg.VIDEO_BUCKET || "videos"));
+    if (video.video_path) {
+      const result = await db.storage.from(videoBucket).remove([video.video_path]);
+      if (result.error) throw new Error(`Could not delete video file: ${result.error.message}`);
+    }
+    if (video.thumbnail_path) {
+      const result = await db.storage.from(cfg.THUMBNAIL_BUCKET || "thumbnails").remove([video.thumbnail_path]);
+      if (result.error) throw new Error(`Could not delete thumbnail: ${result.error.message}`);
+    }
+
+    // This SECURITY DEFINER RPC independently enforces admin permission server-side.
+    const { data: deleted, error: deleteError } = await db.rpc("admin_delete_video", {
+      video_id_input: video.id
+    });
+    if (deleteError) throw deleteError;
+    if (deleted !== true) throw new Error("The database did not confirm deletion.");
+
+    const player = $("video-player");
+    if (player) {
+      player.pause();
+      player.removeAttribute("src");
+      player.load();
+    }
+    activeVideo = null;
+    hideModal("player");
+    toast("Video and database record deleted.");
+    await loadVideos();
+  } catch (err) {
+    console.error("Admin video deletion failed:", err);
+    toast(`Delete failed: ${err.message || "Please check admin and Storage policies."}`);
+  } finally {
+    playerDelete.disabled = false;
+    playerDelete.textContent = "Delete video";
+  }
+});
+  }
+
+
   const adminOpen = $("admin-open");
   if (adminOpen) {
     adminOpen.addEventListener("click", () => {
@@ -672,6 +820,10 @@
     el.addEventListener("click", () => {
       const name = el.dataset.close;
       if (name === "player") {
+        activeVideo = null;
+        closePlayerOptionsMenu();
+        const playerDelete = $("player-delete");
+        if (playerDelete) playerDelete.classList.add("hidden");
         const player = $("video-player");
         if (player) {
           player.pause();

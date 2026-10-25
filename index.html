@@ -111,7 +111,15 @@
     <div class="modal-backdrop" data-close="player"></div>
     <section class="player-panel">
       <button class="modal-close player-close" data-close="player" aria-label="Close">×</button>
-      <video id="video-player" controls playsinline preload="metadata"></video>
+      <div class="video-stage">
+        <video id="video-player" controls controlslist="nodownload noplaybackrate" playsinline preload="metadata"></video>
+        <button id="player-options-toggle" class="player-options-toggle" type="button" aria-label="Video options" aria-haspopup="true" aria-expanded="false">⋮</button>
+        <div id="player-options-menu" class="player-options-menu hidden" role="menu" aria-label="Video options">
+          <a id="player-download" class="player-menu-item" href="#" download role="menuitem"><span aria-hidden="true">⬇</span> Download</a>
+          <button id="player-speed" class="player-menu-item" type="button" role="menuitem"><span aria-hidden="true">▷</span> Playback speed <span id="player-speed-value">1×</span></button>
+          <button id="player-delete" class="player-menu-item player-menu-delete hidden" type="button" role="menuitem">Delete video</button>
+        </div>
+      </div>
       <div class="player-info"><span id="player-category" class="eyebrow"></span><h2 id="player-title"></h2><p id="player-description"></p><span id="player-views" class="muted"></span></div>
     </section>
   </div>
