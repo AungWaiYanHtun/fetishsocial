@@ -22,11 +22,10 @@
   let videos = [];
   let categories = ["All"];
   let activeCategory = "All";
+  let activeVideoView = "regular";
+  let vipMembershipActive = false;
 
-  console.log("Config loaded:", !!window.VIDEOSPACE_CONFIG);
-  console.log("Supabase URL exists:", !!cfg.SUPABASE_URL);
-  console.log("Supabase key exists:", !!cfg.SUPABASE_ANON_KEY);
-  console.log("Supabase library loaded:", !!window.supabase);
+  // Avoid logging configuration details in production.
 
   const escapeHTML = (value = "") =>
     String(value).replace(/[&<>"']/g, (c) => ({
@@ -125,6 +124,7 @@
 
     const q = search.value.trim().toLowerCase();
     const filtered = videos.filter((v) =>
+      (activeVideoView === "vip" ? !!v.is_vip : !v.is_vip) &&
       (activeCategory === "All" ||
         (v.category || "Entertainment") === activeCategory) &&
       `${v.title || ""} ${v.description || ""} ${v.category || ""}`
@@ -150,7 +150,7 @@
             <span class="play-badge">▶</span>
           </div>
           <div class="card-content">
-            <span class="card-category">${escapeHTML(v.category || "Entertainment")}</span>
+            <span class="card-category">${v.is_vip ? "👑 VIP · " : ""}${escapeHTML(v.category || "Entertainment")}</span>
             <h3 class="card-title">${escapeHTML(v.title || "Untitled video")}</h3>
             <p class="card-description">${escapeHTML(v.description || "Ready when you are. Press play to watch.")}</p>
             <div class="card-meta">
@@ -195,15 +195,16 @@
 
   async function loadVideos() {
     if (!configured || !db) {
-      videos = demoVideos;
-      categories = ["All", ...new Set(
-        videos.map((v) => v.category || "Entertainment")
-      )];
+      // Do not replace the owner's real library with demo/sample videos.
+      // Show an empty state and a clear connection warning until Supabase is available.
+      videos = [];
+      categories = ["All"];
       renderCategories();
       renderVideos();
-      setNotice("Preview mode: connect Supabase in config.js and run supabase-setup.sql to load and publish real videos.");
+      setNotice("Supabase is not connected. Your saved videos have not been deleted; check config.js and the Supabase client connection.");
       const count = $("result-count");
-      if (count) count.textContent = `${videos.length} sample videos`;
+      if (count) count.textContent = "0 videos — connection needed";
+      setConnection("Database connection needed", false);
       return;
     }
 
@@ -214,14 +215,44 @@
     setNotice("");
 
     try {
+      // The browser's public Supabase query intentionally returns Free videos only
+      // under RLS. VIP metadata is fetched separately from the authenticated backend
+      // and is never requested from the public website without Telegram initData.
       const { data, error } = await db.from("videos")
-        .select("id,title,description,category,video_url,thumbnail_url,views,created_at")
+        .select("id,title,description,category,video_path,thumbnail_url,views,created_at,is_vip")
         .eq("published", true)
+        .eq("is_vip", false)
         .order("created_at", { ascending: false })
         .limit(100);
 
       if (error) throw error;
-      videos = data || [];
+      const freeVideos = (data || []).map((v) => ({ ...v, is_vip: false }));
+      let vipVideos = [];
+      const tg = window.Telegram?.WebApp;
+      const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
+      if (tg?.initData && api) {
+        try {
+          const response = await fetch(`${api}/api/vip-videos`, {
+            headers: { "X-Telegram-Init-Data": tg.initData },
+            cache: "no-store"
+          });
+          if (response.ok) {
+            const payload = await response.json();
+            const list = Array.isArray(payload) ? payload : payload.videos;
+            if (Array.isArray(list)) {
+              vipVideos = list.map((v) => ({ ...v, is_vip: true }));
+            }
+          } else if (response.status !== 401 && response.status !== 403) {
+            console.warn("VIP list request failed:", response.status);
+          }
+        } catch (vipError) {
+          // Keep Free videos usable even if the VIP API is temporarily unavailable.
+          console.warn("VIP list unavailable:", vipError);
+        }
+      }
+      videos = [...freeVideos, ...vipVideos]
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+        .slice(0, 100);
       categories = ["All", ...new Set(
         videos.map((v) => v.category || "Entertainment")
       )];
@@ -244,9 +275,59 @@
       detail: { videoId: String(v.id) }
     }));
 
-    if (!v.video_url) {
-      toast("This sample card has no video file yet.");
-      return;
+    let playbackUrl = "";
+
+    if (v.is_vip) {
+      // Server authorization is required for every VIP playback attempt.
+      const tg = window.Telegram?.WebApp;
+      const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
+      if (!tg?.initData || !api) {
+        toast("VIP videos can only be opened through the authenticated Telegram Mini App.");
+        return;
+      }
+
+      try {
+        const r = await fetch(`${api}/api/vip-video-url`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Telegram-Init-Data": tg.initData
+          },
+          body: JSON.stringify({ videoId: String(v.id) }),
+          cache: "no-store"
+        });
+        const result = await r.json().catch(() => ({}));
+        if (!r.ok || result.active === false) {
+          vipMembershipActive = false;
+          if (window.confirm("👑 This video is for VIP members only. Get VIP now?")) {
+            const buy = document.getElementById("vip-buy");
+            if (buy) buy.click();
+            else document.dispatchEvent(new CustomEvent("videospace:open-vip-plans"));
+          }
+          return;
+        }
+        playbackUrl = result.signedUrl || result.url || "";
+        if (!playbackUrl || !/^https:\/\//i.test(playbackUrl)) {
+          throw new Error("The VIP API did not return a valid HTTPS signed URL.");
+        }
+        vipMembershipActive = true;
+      } catch (e) {
+        console.error("VIP playback authorization failed:", e);
+        toast("VIP video could not be authorized. Please try again.");
+        return;
+      }
+    } else {
+      // Derive Free URLs from storage paths; never fetch a raw video_url column.
+      const path = v.video_path;
+      if (path && db) {
+        playbackUrl = db.storage
+          .from(cfg.VIDEO_BUCKET || "videos")
+          .getPublicUrl(path).data?.publicUrl || "";
+      }
+      if (!playbackUrl) {
+        toast("This video has no usable storage path. Re-upload or migrate this video.");
+        return;
+      }
     }
 
     const player = $("video-player");
@@ -255,7 +336,7 @@
       return;
     }
 
-    player.src = v.video_url;
+    player.src = playbackUrl;
     const category = $("player-category");
     const title = $("player-title");
     const description = $("player-description");
@@ -296,6 +377,26 @@
     {id:"demo-5",title:"Small Things, Big Ideas",description:"Quick ideas and useful things to learn today.",category:"Education",views:4210,created_at:"2026-09-06"},
     {id:"demo-6",title:"A Little More Laughter",description:"A light-hearted pick to brighten up your day.",category:"Comedy",views:3914,created_at:"2026-09-02"}
   ];
+
+  function switchVideoView(view) {
+    activeVideoView = view === "vip" ? "vip" : "regular";
+    activeCategory = "All";
+    const regular = $("regular-videos-btn"), vip = $("vip-videos-btn"), hero = $("vip-hero");
+    if (regular) regular.classList.toggle("active", activeVideoView === "regular");
+    if (vip) vip.classList.toggle("active", activeVideoView === "vip");
+    if (hero) hero.classList.toggle("hidden", activeVideoView !== "vip");
+    const heading = document.querySelector(".section-heading h2");
+    if (heading) heading.innerHTML = activeVideoView === "vip" ? '👑 VIP <span class="gold-text">Videos</span>' : 'Explore <span class="gold-text">Videos</span>';
+    renderCategories();
+    renderVideos();
+  }
+  $("regular-videos-btn")?.addEventListener("click", () => switchVideoView("regular"));
+  $("vip-videos-btn")?.addEventListener("click", () => switchVideoView("vip"));
+  $("vip-page-buy")?.addEventListener("click", () => {
+    const buy = $("vip-buy");
+    if (buy) buy.click();
+    else document.dispatchEvent(new CustomEvent("videospace:open-vip-plans"));
+  });
 
   const categoriesEl = $("categories");
   if (categoriesEl) {
@@ -488,8 +589,13 @@
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const videoPath = `${currentUser.id}/${crypto.randomUUID()}-${safeName}`;
 
+        const isVipUpload = $("video-access")?.value === "true";
+        const videoBucket = isVipUpload
+          ? (cfg.VIP_VIDEO_BUCKET || "vip-videos")
+          : (cfg.VIDEO_BUCKET || "videos");
+
         let result = await db.storage
-          .from(cfg.VIDEO_BUCKET || "videos")
+          .from(videoBucket)
           .upload(videoPath, file, {
             contentType: file.type || "video/mp4",
             upsert: false
@@ -497,9 +603,10 @@
         if (result.error) throw result.error;
         bar.style.width = "60%";
 
-        const videoPublic = db.storage
-          .from(cfg.VIDEO_BUCKET || "videos")
-          .getPublicUrl(videoPath);
+        // VIP objects belong in a private bucket; only the server may sign URLs.
+        const videoPublicUrl = isVipUpload
+          ? null
+          : (db.storage.from(videoBucket).getPublicUrl(videoPath).data?.publicUrl || null);
 
         let thumbnailUrl = null;
         let thumbPath = null;
@@ -529,11 +636,13 @@
           title: $("video-title")?.value.trim() || "",
           description: $("video-description")?.value.trim() || "",
           category: $("video-category")?.value || "Entertainment",
-          video_url: videoPublic.data.publicUrl,
+          video_url: videoPublicUrl,
           video_path: videoPath,
           thumbnail_url: thumbnailUrl,
           thumbnail_path: thumbPath,
           published: true,
+          is_vip: isVipUpload,
+          storage_bucket: videoBucket,
           uploaded_by: currentUser.id
         };
 
@@ -626,4 +735,3 @@
 
   init();
 })();
-

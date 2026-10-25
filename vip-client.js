@@ -20,7 +20,9 @@
 
     if (tg) tg.ready();
 
-    loadPackages();
+    const vipBuy = document.getElementById("vip-buy");
+    if (vipBuy) vipBuy.addEventListener("click", () => loadPackages(true));
+    document.addEventListener("videospace:open-vip-plans", () => loadPackages(true));
 
     if (statusEl && tg?.initData) {
       loadVipStatus(statusEl);
@@ -54,7 +56,7 @@
     return data;
   }
 
-  async function loadPackages() {
+  async function loadPackages(show = false) {
     const container = document.getElementById("vip-packages");
 
     // If the page has no package container, create one.
@@ -69,12 +71,15 @@
       target = document.createElement("section");
       target.id = "vip-packages";
       target.style.cssText =
-        "padding:16px;margin:16px 0;border-radius:14px;" +
-        "background:rgba(128,128,128,.08);";
-
+        "display:none;padding:16px;margin:16px auto;border-radius:14px;max-width:900px;" +
+        "background:#0b0a08;border:1px solid #b88a2e;color:#f7e4b2;";
+      target.innerHTML = '<button type="button" id="vip-plans-close" style="float:right">✕</button>';
       anchor.insertAdjacentElement("afterend", target);
+      target.querySelector("#vip-plans-close")?.addEventListener("click", () => { target.style.display = "none"; });
     }
 
+    if (!show) { target.style.display = "none"; return; }
+    target.style.display = "block";
     target.textContent = "Loading VIP packages…";
 
     try {
@@ -97,8 +102,8 @@
       packages.forEach((plan) => {
         const card = document.createElement("div");
         card.style.cssText =
-          "padding:14px;margin:12px 0;border:1px solid #8885;" +
-          "border-radius:12px;";
+          "padding:14px;margin:12px 0;border:1px solid #6d5528;" +
+          "border-radius:14px;background:linear-gradient(120deg,#18140c,#080808);";
 
         const title = document.createElement("h3");
         title.textContent = plan.name || "VIP Membership";
@@ -115,8 +120,8 @@
         button.type = "button";
         button.textContent = "Get VIP";
         button.style.cssText =
-          "padding:10px 18px;border:0;border-radius:8px;" +
-          "cursor:pointer;font-weight:bold;";
+          "padding:10px 18px;border:1px solid #f2ce72;border-radius:10px;" +
+          "background:linear-gradient(120deg,#ffe8a1,#c8952c);color:#160f03;cursor:pointer;font-weight:bold;";
 
         button.addEventListener("click", () => {
           startPurchase(plan, button);
@@ -149,10 +154,10 @@
     button.textContent = "Connecting…";
 
     try {
-      const result = await request("/api/create-invoice", {
+      const result = await request("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageId: plan.id })
+        body: JSON.stringify({ packageId: plan.id, initData: tg.initData })
       });
 
       if (result.invoiceLink && tg.openInvoice) {

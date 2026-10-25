@@ -40,12 +40,12 @@
   </header>
 
   <main>
-    <section class="income-toolbar" aria-label="Membership and referrals">
-      <div class="income-intro"><span class="eyebrow">MEMBERSHIP</span><strong>Unlock more with <span class="gold-text">VIP</span></strong><small>Premium access through Telegram Stars</small></div>
-      <button class="button button-gold" id="vip-buy">★ Get VIP</button>
-      <button class="button button-quiet" id="referral-share">↗ Invite friends</button>
-    </section>
-<section id="library" class="library-section">
+<nav class="video-switch" aria-label="Video sections">
+      <button type="button" id="regular-videos-btn" class="video-switch-btn active">▶️ Explore Videos</button>
+      <button type="button" id="vip-videos-btn" class="video-switch-btn">👑 VIP Videos</button>
+    </nav>
+    <section id="vip-hero" class="vip-hero hidden"><div><span class="eyebrow">EXCLUSIVE COLLECTION</span><h2>👑 VIP <span class="gold-text">VIDEOS</span></h2><p>Exclusive content for VIP members only.</p></div><button type="button" id="vip-page-buy" class="button button-gold">★ Get VIP</button></section>
+    <section id="library" class="library-section">
       <div class="section-heading">
         <div><span class="eyebrow">THE COLLECTION</span><h2>Explore <span class="gold-text">videos</span></h2></div>
         <span id="result-count" class="result-count">Loading collection…</span>
@@ -95,6 +95,7 @@
       <form id="upload-form">
         <label>Video title<input id="video-title" required maxlength="120" placeholder="Give your video a title"></label>
         <label>Description<textarea id="video-description" rows="3" maxlength="2000" placeholder="What is this video about?"></textarea></label>
+        <label>Access<select id="video-access"><option value="false">Explore / Free</option><option value="true">VIP only</option></select></label>
         <label>Category<select id="video-category" required><option value="Entertainment">Entertainment</option><option value="Music">Music</option><option value="Gaming">Gaming</option><option value="Travel">Travel</option><option value="Education">Education</option><option value="Comedy">Comedy</option><option value="Lifestyle">Lifestyle</option></select></label>
         <label>Thumbnail image (optional)<input id="video-thumbnail" type="file" accept="image/jpeg,image/png,image/webp"></label>
         <label>Video file<input id="video-file" type="file" accept="video/mp4,video/webm,video/quicktime" required></label>
