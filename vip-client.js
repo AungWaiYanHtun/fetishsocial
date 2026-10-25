@@ -205,12 +205,23 @@
     const username = String(cfg.TELEGRAM_BOT_USERNAME || "Fetish_OnlyFan_bot")
       .replace(/^@/, "")
       .trim();
-    // Telegram deep-link payloads support letters, numbers, "_" and "-".
+    // A normal browser has no Telegram initData. Use the bot deep link rather
+    // than showing a Mini-App-only warning. The bot backend must handle this
+    // start payload and create the invoice from its own trusted package data.
     const rawId = String(plan?.id || "");
     const safeId = rawId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 48);
     const startPayload = safeId ? `vip_${safeId}` : "vip";
     const url = `https://t.me/${encodeURIComponent(username)}?start=${encodeURIComponent(startPayload)}`;
-    window.location.href = url;
+
+    // Close the plan dialog before navigating so the browser does not remain
+    // on a modal if Telegram opens in the installed app.
+    const modal = document.getElementById("vip-packages");
+    modal?.classList.remove("is-open");
+    document.body.classList.remove("vip-plans-open");
+
+    // Assigning a top-level URL lets mobile browsers hand off to the Telegram
+    // app when available, while still opening the bot's web page otherwise.
+    window.location.assign(url);
   }
 
   async function startPurchase(plan, button) {
