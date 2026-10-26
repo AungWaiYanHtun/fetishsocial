@@ -127,3 +127,10 @@ body.vip-plans-open{overflow:hidden;}
 .delete-confirm-cancel{border:1px solid #8c713b;background:#29251d;color:#f4e8d2}
 .delete-confirm-accept{border:1px solid #87362f;background:#87362f;color:#fff}
 .delete-confirm-actions button:focus-visible{outline:2px solid #f0d39b;outline-offset:2px}
+
+/* VIP lock-card design */
+.video-card.vip-locked .thumbnail img{filter:brightness(.48) saturate(.78)}
+.vip-lock-badge{position:absolute;right:14px;top:14px;width:48px;height:48px;display:grid;place-items:center;border:1px solid #d9b86d;border-radius:50%;background:#100e0be8;color:#f2d58b;font-size:23px;box-shadow:0 0 20px #d9b86d33;z-index:2}
+.video-card.vip-locked{border-color:#b99850;cursor:pointer}
+.vip-unlock-button{width:100%;margin-top:12px;min-height:44px;border:0;border-radius:999px;background:linear-gradient(110deg,#f3d58f,#c99b35);color:#171108;font-weight:800;font-size:14px;cursor:pointer}
+.vip-unlock-button:focus-visible{outline:2px solid #f3d58f;outline-offset:3px}

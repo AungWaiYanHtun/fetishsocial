@@ -144,23 +144,23 @@
       const thumbnail = v.thumbnail_url
         ? `<img src="${escapeHTML(v.thumbnail_url)}" alt="" loading="${index < 4 ? "eager" : "lazy"}" fetchpriority="${index < 2 ? "high" : "auto"}" decoding="async" onerror="this.remove()">`
         : "";
+      const lockedVip = !!v.is_vip && !isAdmin && !vipMembershipActive;
       return `
-        <article class="video-card" tabindex="0" role="button"
+        <article class="video-card${lockedVip ? " vip-locked" : ""}" tabindex="0" role="button"
           data-video-id="${escapeHTML(v.id)}"
-          aria-label="Play ${escapeHTML(v.title || "video")}">
+          aria-label="${lockedVip ? "VIP locked: " : "Play "}${escapeHTML(v.title || "video")}">
           <div class="thumbnail">
             ${thumbnail}
             <span class="thumbnail-placeholder">F<span style="color:#e1c17d">✦</span></span>
-            <span class="play-badge">▶</span>
+            ${lockedVip ? '<span class="vip-lock-badge" aria-label="VIP locked">🔒</span>' : '<span class="play-badge">▶</span>'}
           </div>
           <div class="card-content">
-            <span class="card-category">${v.is_vip ? "👑 VIP · " : ""}${escapeHTML(v.category || "Entertainment")}</span>
+            <span class="card-category">${v.is_vip ? (lockedVip ? "🔒 VIP · " : "👑 VIP · ") : ""}${escapeHTML(v.category || "Entertainment")}</span>
             <h3 class="card-title">${escapeHTML(v.title || "Untitled video")}</h3>
-            <p class="card-description">${escapeHTML(v.description || "Ready when you are. Press play to watch.")}</p>
-            <div class="card-meta">
-              <span>▶ ${Number(v.views || 0).toLocaleString()} views</span>
-              <span>${niceDate(v.created_at)}</span>
-            </div>
+            ${lockedVip
+              ? `<p class="card-description">VIP members only</p><button class="vip-unlock-button" type="button" data-vip-unlock>👑 Unlock VIP</button>`
+              : `<p class="card-description">${escapeHTML(v.description || "Ready when you are. Press play to watch.")}</p>
+                 <div class="card-meta"><span>▶ ${Number(v.views || 0).toLocaleString()} views</span><span>${niceDate(v.created_at)}</span></div>`}
           </div>
         </article>`;
     }).join("");
@@ -412,6 +412,7 @@
           throw new Error("The VIP API did not return a valid HTTPS signed URL.");
         }
         vipMembershipActive = true;
+        renderVideos();
       } catch (e) {
         console.error("VIP playback authorization failed:", e);
         toast("VIP video could not be authorized. Please try again.");
@@ -517,6 +518,15 @@
   const grid = $("video-grid");
   if (grid) {
     grid.addEventListener("click", (e) => {
+      const unlock = e.target.closest("[data-vip-unlock]");
+      if (unlock) {
+        e.preventDefault();
+        e.stopPropagation();
+        const buy = $("vip-buy");
+        if (buy) buy.click();
+        else document.dispatchEvent(new CustomEvent("videospace:open-vip-plans"));
+        return;
+      }
       const card = e.target.closest("[data-video-id]");
       if (card) openVideo(card.dataset.videoId);
     });
