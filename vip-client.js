@@ -43,17 +43,20 @@
 
   async function request(path, options = {}) {
     const headers = { ...(options.headers || {}) };
+    const timeoutMs = Number(options.timeoutMs) || PACKAGE_TIMEOUT_MS;
+    const fetchOptions = { ...options };
+    delete fetchOptions.timeoutMs;
 
     if (tg?.initData) {
       headers["X-Telegram-Init-Data"] = tg.initData;
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PACKAGE_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     let response;
     try {
       response = await fetch(`${api}${path}`, {
-        ...options,
+        ...fetchOptions,
         headers,
         signal: options.signal || controller.signal
       });
@@ -279,22 +282,29 @@
     }
   }
 
-  async function loadVipStatus(el) {
+  async function loadVipStatus(el, attempt = 0) {
     try {
-      const data = await request("/api/vip-status");
+      // Render's free instance may need time to wake up. Give this status request
+      // a longer timeout than package-list requests so cold starts do not look
+      // like a permanent login failure.
+      const data = await request("/api/vip-status", { timeoutMs: 25_000 });
       if (data.active) {
         el.textContent = `VIP active until ${new Date(data.expiresAt).toLocaleString()}`;
         el.classList.remove("hidden");
       } else {
-        // Keep the page clean for free members; the VIP plans remain available above.
+        // A free membership is normal; do not show a warning for it.
         el.textContent = "";
         el.classList.add("hidden");
       }
     } catch (error) {
-      console.error("VIP status error:", error);
-      el.textContent =
-        "Could not verify VIP status. Reopen this page from the official Telegram bot.";
-      el.classList.remove("hidden");
+      console.warn("VIP status check temporarily failed:", error);
+      // Do not leave a scary error banner at the bottom of the website for a
+      // transient Render cold start/network failure. Retry once in the background.
+      el.textContent = "";
+      el.classList.add("hidden");
+      if (attempt < 1 && tg?.initData) {
+        setTimeout(() => loadVipStatus(el, attempt + 1), 2500);
+      }
     }
   }
 
