@@ -27,7 +27,6 @@
   let activeVideoView = "regular";
   let vipMembershipActive = false;
   const VIDEO_CACHE_KEY = "videospace_public_videos_v1";
-  const VIDEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
   // Avoid logging configuration details in production.
 
@@ -259,15 +258,45 @@
       // The browser's public Supabase query intentionally returns Free videos only
       // under RLS. VIP metadata is fetched separately from the authenticated backend
       // and is never requested from the public website without Telegram initData.
-      const { data, error } = await db.from("videos")
-        .select("id,title,description,category,video_path,thumbnail_url,views,created_at,is_vip")
-        .eq("published", true)
-        .eq("is_vip", false)
-        .order("created_at", { ascending: false })
-        .limit(100);
+      // Prefer the short-lived server/CDN-cached public catalogue when available.
+      // If the backend is cold or unreachable, fall back quickly to Supabase directly.
+      let data = null;
+      let error = null;
+      const publicApi = (cfg.VIP_API_URL || "").replace(/\/$/, "");
+      if (publicApi) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        try {
+          const response = await fetch(`${publicApi}/api/public-videos`, {
+            method: "GET",
+            headers: { "Accept": "application/json" },
+            signal: controller.signal
+          });
+          if (response.ok) {
+            const payload = await response.json();
+            const list = Array.isArray(payload) ? payload : payload.videos;
+            if (Array.isArray(list)) data = list;
+          }
+        } catch (publicApiError) {
+          // Render may be waking up; don't let it block the direct Supabase fallback.
+          console.warn("Cached public catalogue unavailable; using Supabase:", publicApiError);
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+      if (data === null) {
+        const result = await db.from("videos")
+          .select("id,title,description,category,video_path,thumbnail_url,views,created_at,is_vip")
+          .eq("published", true)
+          .eq("is_vip", false)
+          .order("created_at", { ascending: false })
+          .limit(100);
+        data = result.data;
+        error = result.error;
+      }
 
       if (error) throw error;
-      const freeVideos = (data || []).map((v) => ({ ...v, is_vip: false }));
+      const freeVideos = (data || []).filter((v) => v && v.is_vip !== true).map((v) => ({ ...v, is_vip: false }));
       cacheFreeVideos(freeVideos);
       let vipVideos = [];
       const tg = window.Telegram?.WebApp;
