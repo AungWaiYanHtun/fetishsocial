@@ -282,11 +282,14 @@
   async function loadVipStatus(el) {
     try {
       const data = await request("/api/vip-status");
-      el.textContent = data.active
-        ? `VIP active until ${new Date(data.expiresAt).toLocaleString()}`
-        : "Free membership — choose a VIP plan to unlock premium access.";
-
-      el.classList.remove("hidden");
+      if (data.active) {
+        el.textContent = `VIP active until ${new Date(data.expiresAt).toLocaleString()}`;
+        el.classList.remove("hidden");
+      } else {
+        // Keep the page clean for free members; the VIP plans remain available above.
+        el.textContent = "";
+        el.classList.add("hidden");
+      }
     } catch (error) {
       console.error("VIP status error:", error);
       el.textContent =
