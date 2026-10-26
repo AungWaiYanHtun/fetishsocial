@@ -813,10 +813,42 @@
     deleteButton?.addEventListener("click", async () => {
       if (!activePlayerVideo || !isAdmin || !currentUser || !db) { toast("Only an authenticated administrator can delete videos."); return; }
       const v = activePlayerVideo;
-      if (v.is_vip) { toast("VIP video deletion must be handled by the authorized VIP API."); return; }
       if (!(await confirmDelete(v.title || "this video"))) return;
       deleteButton.disabled = true;
       try {
+        if (v.is_vip) {
+          // VIP deletion must go through the trusted backend, which independently
+          // verifies Telegram initData and ADMIN_TELEGRAM_IDS before deleting.
+          const tg = window.Telegram?.WebApp;
+          const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
+          if (!tg?.initData) {
+            throw new Error("Open this page from the official Telegram bot before deleting VIP videos.");
+          }
+          if (!api) {
+            throw new Error("VIP API URL is not configured.");
+          }
+          const response = await fetch(`${api}/api/admin/delete-vip-video`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Telegram-Init-Data": tg.initData
+            },
+            body: JSON.stringify({ videoId: String(v.id) }),
+            cache: "no-store"
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(result.error || `VIP delete request failed (${response.status}).`);
+          }
+          playerEl.pause();
+          playerEl.removeAttribute("src");
+          playerEl.load();
+          hideModal("player");
+          toast("VIP video deleted successfully.");
+          await loadVideos();
+          return;
+        }
+
         const bucket = cfg.VIDEO_BUCKET || "videos";
         const { error } = await db.from("videos").delete().eq("id", v.id);
         if (error) throw error;
@@ -827,8 +859,10 @@
         }
         playerEl.pause(); playerEl.removeAttribute("src"); playerEl.load(); hideModal("player");
         toast(storageWarning ? "Video record deleted; storage cleanup needs admin review." : "Video deleted successfully."); await loadVideos();
-      } catch (err) { console.error("Video delete failed:", err); toast("Delete failed. Check administrator permissions and storage policies."); }
-      finally { deleteButton.disabled = false; }
+      } catch (err) {
+        console.error("Video delete failed:", err);
+        toast(err?.message || "Delete failed. Check administrator permissions and storage policies.");
+      } finally { deleteButton.disabled = false; }
     });
     document.addEventListener("click", (e) => { if (menuEl && !menuEl.classList.contains("hidden") && !menuEl.contains(e.target) && e.target !== menuButton) closePlayerMenu(); });
   }
