@@ -26,6 +26,8 @@
   let activeCategory = "All";
   let activeVideoView = "regular";
   let vipMembershipActive = false;
+  const VIDEO_CACHE_KEY = "videospace_public_videos_v1";
+  const VIDEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
   // Avoid logging configuration details in production.
 
@@ -138,9 +140,9 @@
         `${filtered.length} video${filtered.length === 1 ? "" : "s"}`;
     }
 
-    grid.innerHTML = filtered.map((v) => {
+    grid.innerHTML = filtered.map((v, index) => {
       const thumbnail = v.thumbnail_url
-        ? `<img src="${escapeHTML(v.thumbnail_url)}" alt="" loading="lazy" onerror="this.remove()">`
+        ? `<img src="${escapeHTML(v.thumbnail_url)}" alt="" loading="${index < 4 ? "eager" : "lazy"}" fetchpriority="${index < 2 ? "high" : "auto"}" decoding="async" onerror="this.remove()">`
         : "";
       return `
         <article class="video-card" tabindex="0" role="button"
@@ -195,7 +197,44 @@
     updateAuthUI();
   }
 
+  function readCachedFreeVideos() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(VIDEO_CACHE_KEY) || "null");
+      if (!cached || !Array.isArray(cached.videos)) return [];
+      // Only public/free video metadata is cached to avoid leaking VIP-only records
+      // between users sharing the same browser/device.
+      return cached.videos
+        .filter((v) => v && v.id && v.is_vip === false)
+        .map((v) => ({ ...v, is_vip: false }));
+    } catch {
+      return [];
+    }
+  }
+
+  function cacheFreeVideos(list) {
+    try {
+      localStorage.setItem(VIDEO_CACHE_KEY, JSON.stringify({
+        savedAt: Date.now(),
+        videos: list.filter((v) => !v.is_vip).slice(0, 100)
+      }));
+    } catch (error) {
+      // Storage can be unavailable or full; video loading must still work.
+      console.warn("Video cache unavailable:", error);
+    }
+  }
+
   async function loadVideos() {
+    // Paint the last known public list immediately, then refresh it from Supabase.
+    // Never replace a usable cached list with a full-screen spinner during refresh.
+    const cachedFreeVideos = readCachedFreeVideos();
+    if (cachedFreeVideos.length) {
+      videos = cachedFreeVideos;
+      categories = ["All", ...new Set(videos.map((v) => v.category || "Entertainment"))];
+      renderCategories();
+      renderVideos();
+      setNotice("");
+    }
+
     if (!configured || !db) {
       // Do not replace the owner's real library with demo/sample videos.
       // Show an empty state and a clear connection warning until Supabase is available.
@@ -211,7 +250,7 @@
     }
 
     const grid = $("video-grid");
-    if (grid) {
+    if (grid && cachedFreeVideos.length === 0) {
       grid.innerHTML = '<div class="loading-card"><span class="spinner"></span><p>Loading collection…</p></div>';
     }
     setNotice("");
@@ -229,6 +268,7 @@
 
       if (error) throw error;
       const freeVideos = (data || []).map((v) => ({ ...v, is_vip: false }));
+      cacheFreeVideos(freeVideos);
       let vipVideos = [];
       const tg = window.Telegram?.WebApp;
       const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
@@ -280,10 +320,16 @@
       renderCategories();
       renderVideos();
     } catch (err) {
-      videos = [];
-      renderCategories();
-      renderVideos();
-      setNotice("Could not load videos. Check the SQL setup, table columns and database policies. Details: " + (err.message || "Unknown error"));
+      // Keep cached videos visible when the server/database is slow or offline.
+      if (cachedFreeVideos.length === 0) {
+        videos = [];
+        renderCategories();
+        renderVideos();
+        setNotice("Could not load videos right now. Please try again shortly.");
+      } else {
+        setNotice("");
+        setConnection("Showing saved videos · refreshing in background", false);
+      }
       console.error("Load videos failed:", err);
     }
   }
