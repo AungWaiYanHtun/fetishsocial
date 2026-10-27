@@ -3,6 +3,12 @@
 
   const $ = (id) => document.getElementById(id);
   const cfg = window.VIDEOSPACE_CONFIG || {};
+  // UI gate for the designated Telegram administrator. Server-side authorization remains required.
+  const DESIGNATED_ADMIN_TELEGRAM_ID = "8990600784";
+  const isDesignatedTelegramAdmin = () => {
+    const id = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    return id != null && String(id) === DESIGNATED_ADMIN_TELEGRAM_ID;
+  };
 
   const configured = Boolean(
     typeof cfg.SUPABASE_URL === "string" &&
@@ -172,9 +178,12 @@
     const authOpen = $("auth-open");
     const signOut = $("sign-out");
     const adminOpen = $("admin-open");
-    if (authOpen) authOpen.classList.toggle("hidden", !!currentUser);
-    if (signOut) signOut.classList.toggle("hidden", !currentUser);
-    if (adminOpen) adminOpen.classList.toggle("hidden", !isAdmin);
+    const designatedAdmin = isDesignatedTelegramAdmin();
+    if (authOpen) authOpen.classList.toggle("hidden", !!currentUser || !designatedAdmin);
+    if (signOut) signOut.classList.toggle("hidden", !currentUser || !designatedAdmin);
+    if (adminOpen) adminOpen.classList.toggle("hidden", !isAdmin || !designatedAdmin);
+    const authToggle = $("auth-toggle");
+    if (authToggle) authToggle.classList.add("hidden");
 
     if (currentUser) {
       setConnection(isAdmin ? "Admin signed in" : "Signed in", true);
@@ -185,7 +194,7 @@
 
   async function refreshAdmin() {
     isAdmin = false;
-    if (db && currentUser) {
+    if (db && currentUser && isDesignatedTelegramAdmin()) {
       try {
         const { data, error } = await db.rpc("is_admin");
         if (!error) isAdmin = !!data;
@@ -623,6 +632,10 @@
   if (authForm) {
     authForm.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!isDesignatedTelegramAdmin()) {
+        hideModal("auth");
+        return;
+      }
       const message = $("auth-message");
 
       if (!db) {
@@ -689,7 +702,7 @@
   const adminOpen = $("admin-open");
   if (adminOpen) {
     adminOpen.addEventListener("click", () => {
-      if (!isAdmin) {
+      if (!isAdmin || !isDesignatedTelegramAdmin()) {
         toast("Administrator access required.");
         return;
       }
@@ -707,7 +720,7 @@
       e.preventDefault();
       const message = $("upload-message");
 
-      if (!db || !isAdmin || !currentUser) {
+      if (!db || !isAdmin || !currentUser || !isDesignatedTelegramAdmin()) {
         if (message) message.textContent = "Only an authenticated administrator can upload.";
         return;
       }
@@ -916,7 +929,7 @@
       accept?.focus();
     });
     deleteButton?.addEventListener("click", async () => {
-      if (!activePlayerVideo || !isAdmin || !currentUser || !db) { toast("Only an authenticated administrator can delete videos."); return; }
+      if (!activePlayerVideo || !isAdmin || !currentUser || !db || !isDesignatedTelegramAdmin()) { toast("Only the authorized Telegram administrator can delete videos."); return; }
       const v = activePlayerVideo;
       if (!(await confirmDelete(v.title || "this video"))) return;
       deleteButton.disabled = true;
