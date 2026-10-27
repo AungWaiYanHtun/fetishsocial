@@ -298,6 +298,28 @@
         }
       }
 
+      // Load the authenticated Telegram user's VIP status before rendering cards.
+      // The status footer is rendered by vip-client.js, but it does not update this
+      // file's vipMembershipActive flag; without this request valid members still
+      // see the Lock / Unlock VIP UI.
+      vipMembershipActive = false;
+      if (tg?.initData && api) {
+        try {
+          const statusResponse = await fetch(`${api}/api/vip-status`, {
+            headers: { "X-Telegram-Init-Data": tg.initData },
+            cache: "no-store"
+          });
+          if (statusResponse.ok) {
+            const status = await statusResponse.json();
+            vipMembershipActive = status.active === true;
+          } else {
+            console.warn("VIP status request failed:", statusResponse.status);
+          }
+        } catch (statusError) {
+          console.warn("VIP status unavailable:", statusError);
+        }
+      }
+
       // In the signed-in admin dashboard/preview, allow admins to see VIP
       // metadata directly when Telegram WebApp authentication is unavailable.
       // RLS must grant SELECT only to admins; private video playback still uses
@@ -361,11 +383,9 @@
       // Storage remains private; RLS must allow only admins to read vip-videos.
       let bucket = v.storage_bucket || cfg.VIP_VIDEO_BUCKET || "vip-videos";
       let path = v.video_path;
-
       try {
-        // The secure /api/vip-videos catalogue intentionally omits private storage
-        // paths. For a signed-in Supabase admin, fetch the path under admin RLS
-        // before asking Supabase Storage to sign it.
+        // The backend VIP catalogue intentionally omits private storage paths.
+        // Admins may look up the path through Supabase only when their RLS permits it.
         if (!path) {
           const { data: storageRecord, error: recordError } = await db.from("videos")
             .select("video_path,storage_bucket")
@@ -380,7 +400,6 @@
         if (!path) {
           throw new Error("VIP storage path is missing or not visible to this admin account.");
         }
-
         const { data, error } = await db.storage.from(bucket).createSignedUrl(path, 60 * 10);
         if (error) throw error;
         playbackUrl = data?.signedUrl || "";
