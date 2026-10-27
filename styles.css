@@ -143,3 +143,13 @@ body.vip-plans-open{overflow:hidden;}
 /* Compact active VIP member banner: omit redundant hero title and welcome copy. */
 .vip-member-active .vip-hero-expiry{margin-top:4px!important}
 .vip-member-active .vip-user-badge{margin-top:0}
+
+/* Compact VIP user header with verified check, active state and Telegram ID. */
+.vip-member-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;width:100%}
+.vip-user-badge{display:inline-flex;align-items:center;gap:7px;width:max-content;margin:0;padding:8px 12px;border:1px solid rgba(231,190,91,.7);border-radius:999px;background:linear-gradient(135deg,#fff0b6,#c8952c);color:#211606;font-size:13px;font-weight:800;letter-spacing:.08em}
+.vip-verified-check{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:50%;background:#e5bd54;color:#171006;font-size:15px;font-weight:900;line-height:1}
+.vip-active-badge{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid rgba(0,220,135,.45);border-radius:999px;background:rgba(0,125,75,.22);color:#21e6a0;font-size:12px;font-weight:800;letter-spacing:.05em}
+.vip-active-dot{width:9px;height:9px;border-radius:50%;background:#19e69b;display:inline-block}
+.vip-user-id{margin:10px 0 0;color:#e8cb82;font-size:13px}
+.vip-hero-expiry{margin-top:10px!important;color:#f0d58e!important;font-size:13px!important;font-weight:700}
+.vip-member-active{border-color:#e0bd68;box-shadow:0 0 22px rgba(213,164,56,.10)}

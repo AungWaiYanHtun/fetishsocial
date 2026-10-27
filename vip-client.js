@@ -291,8 +291,9 @@
       const hero = document.getElementById("vip-hero");
       const heroButton = document.getElementById("vip-page-buy");
       const memberBadge = document.getElementById("vip-user-badge");
+      const activeBadge = document.getElementById("vip-active-badge");
+      const userIdEl = document.getElementById("vip-user-id");
       const heroExpiry = document.getElementById("vip-hero-expiry");
-      const heroDescription = document.getElementById("vip-hero-description");
 
       if (data.active) {
         const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
@@ -302,11 +303,16 @@
         el.textContent = expiryText;
         el.classList.remove("hidden");
         memberBadge?.classList.remove("hidden");
+        activeBadge?.classList.remove("hidden");
+        const telegramId = tg?.initDataUnsafe?.user?.id;
+        if (userIdEl && telegramId) {
+          userIdEl.textContent = `Telegram ID: ${telegramId}`;
+          userIdEl.classList.remove("hidden");
+        }
         if (heroExpiry) {
           heroExpiry.textContent = expiryText;
           heroExpiry.classList.remove("hidden");
         }
-        if (heroDescription) heroDescription.textContent = "Welcome back, VIP member. Keep enjoying your exclusive collection.";
         if (heroButton) heroButton.textContent = "↻ Extend VIP";
         hero?.classList.add("vip-member-active");
       } else {
@@ -314,8 +320,9 @@
         el.textContent = "";
         el.classList.add("hidden");
         memberBadge?.classList.add("hidden");
+        activeBadge?.classList.add("hidden");
+        userIdEl?.classList.add("hidden");
         heroExpiry?.classList.add("hidden");
-        if (heroDescription) heroDescription.textContent = "Exclusive content for VIP members only.";
         if (heroButton) heroButton.textContent = "★ Get VIP";
         hero?.classList.remove("vip-member-active");
       }
