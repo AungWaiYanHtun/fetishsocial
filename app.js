@@ -277,48 +277,51 @@
       let vipVideos = [];
       const tg = window.Telegram?.WebApp;
       const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
-      if (tg?.initData && api) {
+
+      // Fetch VIP catalogue and membership status in parallel. Previously these
+      // requests were sequential, adding an avoidable network round-trip.
+      vipMembershipActive = false;
+      const vipListTask = (async () => {
+        if (!tg?.initData || !api) return [];
         try {
           const response = await fetch(`${api}/api/vip-videos`, {
             headers: { "X-Telegram-Init-Data": tg.initData },
             cache: "no-store"
           });
-          if (response.ok) {
-            const payload = await response.json();
-            const list = Array.isArray(payload) ? payload : payload.videos;
-            if (Array.isArray(list)) {
-              vipVideos = list.map((v) => ({ ...v, is_vip: true }));
+          if (!response.ok) {
+            if (response.status !== 401 && response.status !== 403) {
+              console.warn("VIP list request failed:", response.status);
             }
-          } else if (response.status !== 401 && response.status !== 403) {
-            console.warn("VIP list request failed:", response.status);
+            return [];
           }
+          const payload = await response.json();
+          const list = Array.isArray(payload) ? payload : payload.videos;
+          return Array.isArray(list) ? list.map((v) => ({ ...v, is_vip: true })) : [];
         } catch (vipError) {
-          // Keep Free videos usable even if the VIP API is temporarily unavailable.
           console.warn("VIP list unavailable:", vipError);
+          return [];
         }
-      }
+      })();
 
-      // Load the authenticated Telegram user's VIP status before rendering cards.
-      // The status footer is rendered by vip-client.js, but it does not update this
-      // file's vipMembershipActive flag; without this request valid members still
-      // see the Lock / Unlock VIP UI.
-      vipMembershipActive = false;
-      if (tg?.initData && api) {
+      const vipStatusTask = (async () => {
+        if (!tg?.initData || !api) return false;
         try {
-          const statusResponse = await fetch(`${api}/api/vip-status`, {
+          const response = await fetch(`${api}/api/vip-status`, {
             headers: { "X-Telegram-Init-Data": tg.initData },
             cache: "no-store"
           });
-          if (statusResponse.ok) {
-            const status = await statusResponse.json();
-            vipMembershipActive = status.active === true;
-          } else {
-            console.warn("VIP status request failed:", statusResponse.status);
+          if (response.ok) {
+            const status = await response.json();
+            return status.active === true;
           }
+          console.warn("VIP status request failed:", response.status);
         } catch (statusError) {
           console.warn("VIP status unavailable:", statusError);
         }
-      }
+        return false;
+      })();
+
+      [vipVideos, vipMembershipActive] = await Promise.all([vipListTask, vipStatusTask]);
 
       // In the signed-in admin dashboard/preview, allow admins to see VIP
       // metadata directly when Telegram WebApp authentication is unavailable.
