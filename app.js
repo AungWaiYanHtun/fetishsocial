@@ -359,13 +359,28 @@
     if (v.is_vip && isAdmin && currentUser && db) {
       // Admins signed in through Supabase may preview private VIP objects directly.
       // Storage remains private; RLS must allow only admins to read vip-videos.
-      const bucket = v.storage_bucket || cfg.VIP_VIDEO_BUCKET || "vip-videos";
-      const path = v.video_path;
-      if (!path) {
-        toast("This VIP video has no storage path. Re-upload or repair its video record.");
-        return;
-      }
+      let bucket = v.storage_bucket || cfg.VIP_VIDEO_BUCKET || "vip-videos";
+      let path = v.video_path;
+
       try {
+        // The secure /api/vip-videos catalogue intentionally omits private storage
+        // paths. For a signed-in Supabase admin, fetch the path under admin RLS
+        // before asking Supabase Storage to sign it.
+        if (!path) {
+          const { data: storageRecord, error: recordError } = await db.from("videos")
+            .select("video_path,storage_bucket")
+            .eq("id", v.id)
+            .eq("published", true)
+            .eq("is_vip", true)
+            .maybeSingle();
+          if (recordError) throw recordError;
+          path = storageRecord?.video_path || "";
+          bucket = storageRecord?.storage_bucket || bucket;
+        }
+        if (!path) {
+          throw new Error("VIP storage path is missing or not visible to this admin account.");
+        }
+
         const { data, error } = await db.storage.from(bucket).createSignedUrl(path, 60 * 10);
         if (error) throw error;
         playbackUrl = data?.signedUrl || "";
