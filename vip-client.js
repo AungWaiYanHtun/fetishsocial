@@ -288,13 +288,36 @@
       // a longer timeout than package-list requests so cold starts do not look
       // like a permanent login failure.
       const data = await request("/api/vip-status", { timeoutMs: 25_000 });
+      const hero = document.getElementById("vip-hero");
+      const heroButton = document.getElementById("vip-page-buy");
+      const memberBadge = document.getElementById("vip-user-badge");
+      const heroExpiry = document.getElementById("vip-hero-expiry");
+      const heroDescription = document.getElementById("vip-hero-description");
+
       if (data.active) {
-        el.textContent = `VIP active until ${new Date(data.expiresAt).toLocaleString()}`;
+        const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
+        const expiryText = expiresAt && !Number.isNaN(expiresAt.getTime())
+          ? `VIP active until ${expiresAt.toLocaleString()}`
+          : "Your VIP membership is active.";
+        el.textContent = expiryText;
         el.classList.remove("hidden");
+        memberBadge?.classList.remove("hidden");
+        if (heroExpiry) {
+          heroExpiry.textContent = expiryText;
+          heroExpiry.classList.remove("hidden");
+        }
+        if (heroDescription) heroDescription.textContent = "Welcome back, VIP member. Keep enjoying your exclusive collection.";
+        if (heroButton) heroButton.textContent = "↻ Extend VIP";
+        hero?.classList.add("vip-member-active");
       } else {
         // A free membership is normal; do not show a warning for it.
         el.textContent = "";
         el.classList.add("hidden");
+        memberBadge?.classList.add("hidden");
+        heroExpiry?.classList.add("hidden");
+        if (heroDescription) heroDescription.textContent = "Exclusive content for VIP members only.";
+        if (heroButton) heroButton.textContent = "★ Get VIP";
+        hero?.classList.remove("vip-member-active");
       }
     } catch (error) {
       console.warn("VIP status check temporarily failed:", error);

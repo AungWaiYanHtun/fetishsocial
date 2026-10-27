@@ -134,3 +134,8 @@ body.vip-plans-open{overflow:hidden;}
 .video-card.vip-locked{border-color:#b99850;cursor:pointer}
 .vip-unlock-button{width:100%;margin-top:12px;min-height:44px;border:0;border-radius:999px;background:linear-gradient(110deg,#f3d58f,#c99b35);color:#171108;font-weight:800;font-size:14px;cursor:pointer}
 .vip-unlock-button:focus-visible{outline:2px solid #f3d58f;outline-offset:3px}
+
+/* VIP member banner: replaces the generic Get VIP CTA for active members. */
+.vip-user-badge{display:inline-flex;align-items:center;width:max-content;margin:8px 0 2px;padding:6px 11px;border:1px solid rgba(231,190,91,.65);border-radius:999px;background:linear-gradient(135deg,#fff0b6,#c8952c);color:#211606;font-size:12px;font-weight:800;letter-spacing:.08em}
+.vip-hero-expiry{margin-top:10px!important;color:#f0d58e!important;font-size:13px!important;font-weight:700}
+.vip-member-active{border-color:#e0bd68;box-shadow:0 0 22px rgba(213,164,56,.10)}
