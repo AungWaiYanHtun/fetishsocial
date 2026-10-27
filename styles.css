@@ -139,3 +139,7 @@ body.vip-plans-open{overflow:hidden;}
 .vip-user-badge{display:inline-flex;align-items:center;width:max-content;margin:8px 0 2px;padding:6px 11px;border:1px solid rgba(231,190,91,.65);border-radius:999px;background:linear-gradient(135deg,#fff0b6,#c8952c);color:#211606;font-size:12px;font-weight:800;letter-spacing:.08em}
 .vip-hero-expiry{margin-top:10px!important;color:#f0d58e!important;font-size:13px!important;font-weight:700}
 .vip-member-active{border-color:#e0bd68;box-shadow:0 0 22px rgba(213,164,56,.10)}
+
+/* Compact active VIP member banner: omit redundant hero title and welcome copy. */
+.vip-member-active .vip-hero-expiry{margin-top:4px!important}
+.vip-member-active .vip-user-badge{margin-top:0}
