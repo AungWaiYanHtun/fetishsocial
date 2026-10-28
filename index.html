@@ -133,6 +133,19 @@
       <div class="player-info"><span id="player-category" class="eyebrow"></span><h2 id="player-title"></h2><p id="player-description"></p><span id="player-views" class="muted"></span></div>
     </section>
   </div>
+  <div id="vip-required-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="vip-required-title" aria-describedby="vip-required-message">
+    <div class="modal-backdrop" data-close="vip-required"></div>
+    <section class="modal-panel vip-required-panel">
+      <button class="modal-close" data-close="vip-required" aria-label="Close">×</button>
+      <span class="eyebrow">VIP ACCESS</span>
+      <h2 id="vip-required-title">👑 Get <span class="gold-text">VIP</span></h2>
+      <p id="vip-required-message" class="muted">This video is for VIP members only.</p>
+      <div class="vip-required-actions">
+        <button type="button" class="button button-quiet" data-close="vip-required">Cancel</button>
+        <button type="button" id="vip-required-get" class="button button-gold">👑 Get VIP</button>
+      </div>
+    </section>
+  </div>
   <div id="delete-confirm-dialog" class="delete-confirm-overlay hidden" role="presentation">
     <section class="delete-confirm-card" role="alertdialog" aria-modal="true" aria-labelledby="delete-confirm-title" aria-describedby="delete-confirm-message">
       <div class="delete-confirm-icon" aria-hidden="true">⌫</div>

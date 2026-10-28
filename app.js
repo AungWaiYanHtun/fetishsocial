@@ -70,7 +70,7 @@
   };
 
   function syncModalAdIsolation() {
-    const modalIds = ["auth-modal", "upload-modal", "player-modal"];
+    const modalIds = ["auth-modal", "upload-modal", "player-modal", "vip-required-modal"];
     const modalOpen = modalIds.some((id) => {
       const el = $(id);
       return el && !el.classList.contains("hidden");
@@ -446,11 +446,7 @@
         const result = await r.json().catch(() => ({}));
         if (!r.ok || result.active === false) {
           vipMembershipActive = false;
-          if (window.confirm("👑 This video is for VIP members only. Get VIP now?")) {
-            const buy = document.getElementById("vip-buy");
-            if (buy) buy.click();
-            else document.dispatchEvent(new CustomEvent("videospace:open-vip-plans"));
-          }
+          showModal("vip-required");
           return;
         }
         playbackUrl = result.signedUrl || result.url || "";
@@ -985,6 +981,16 @@
     document.addEventListener("click", (e) => { if (menuEl && !menuEl.classList.contains("hidden") && !menuEl.contains(e.target) && e.target !== menuButton) closePlayerMenu(); });
   }
 
+  const vipRequiredGetButton = $("vip-required-get");
+  if (vipRequiredGetButton) {
+    vipRequiredGetButton.addEventListener("click", () => {
+      hideModal("vip-required");
+      const buy = $("vip-buy");
+      if (buy) buy.click();
+      else document.dispatchEvent(new CustomEvent("videospace:open-vip-plans"));
+    });
+  }
+
   document.querySelectorAll("[data-close]").forEach((el) => {
     el.addEventListener("click", () => {
       const name = el.dataset.close;
@@ -1004,7 +1010,7 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    ["auth", "upload", "player"].forEach(hideModal);
+    ["auth", "upload", "player", "vip-required"].forEach(hideModal);
     const player = $("video-player");
     if (player) player.pause();
   });
