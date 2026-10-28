@@ -463,7 +463,9 @@
         return;
       }
     } else if (v.is_vip) {
-      // Non-admin VIP playback still requires server-verified Telegram membership.
+      // Show the branded VIP prompt immediately while membership is checked in the background.
+      // This avoids making non-VIP users wait for the API before seeing the prompt.
+      showModal("vip-required");
       const tg = window.Telegram?.WebApp;
       const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
       if (!tg?.initData || !api) {
@@ -492,10 +494,11 @@
           throw new Error("The VIP API did not return a valid HTTPS signed URL.");
         }
         vipMembershipActive = true;
+        hideModal("vip-required");
         renderVideos();
       } catch (e) {
         console.error("VIP playback authorization failed:", e);
-        toast("VIP video could not be authorized. Please try again.");
+        // Keep the prompt visible so the user can close it or open VIP plans.
         return;
       }
     } else {
