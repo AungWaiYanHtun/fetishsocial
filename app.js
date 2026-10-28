@@ -463,9 +463,7 @@
         return;
       }
     } else if (v.is_vip) {
-      // Show the branded VIP prompt immediately while membership is checked in the background.
-      // This avoids making non-VIP users wait for the API before seeing the prompt.
-      showModal("vip-required");
+      // Non-admin VIP playback still requires server-verified Telegram membership.
       const tg = window.Telegram?.WebApp;
       const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
       if (!tg?.initData || !api) {
@@ -473,6 +471,9 @@
         return;
       }
 
+      // Show the branded VIP prompt quickly if server authorization is slow.
+      // If the user is already a VIP member, the prompt is hidden when authorization succeeds.
+      const vipPromptTimer = setTimeout(() => showModal("vip-required"), 180);
       try {
         const r = await fetch(`${api}/api/vip-video-url`, {
           method: "POST",
@@ -484,6 +485,7 @@
           cache: "no-store"
         });
         const result = await r.json().catch(() => ({}));
+        clearTimeout(vipPromptTimer);
         if (!r.ok || result.active === false) {
           vipMembershipActive = false;
           showModal("vip-required");
@@ -497,8 +499,9 @@
         hideModal("vip-required");
         renderVideos();
       } catch (e) {
+        clearTimeout(vipPromptTimer);
         console.error("VIP playback authorization failed:", e);
-        // Keep the prompt visible so the user can close it or open VIP plans.
+        toast("VIP video could not be authorized. Please try again.");
         return;
       }
     } else {
