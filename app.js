@@ -32,6 +32,7 @@
   let activeCategory = "All";
   let activeVideoView = "regular";
   let vipMembershipActive = false;
+  let latestVipVideos = [];
   const VIDEO_CACHE_KEY = "videospace_public_videos_v1";
   const VIDEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   // VIP titles/thumbnails are cached only for this Telegram WebApp session.
@@ -277,6 +278,7 @@
     // VIP metadata is session-only; public videos use the existing public cache.
     const cachedFreeVideos = readCachedFreeVideos();
     const cachedVipVideos = readCachedVipVideos();
+    latestVipVideos = cachedVipVideos;
     const cachedVideos = [...cachedFreeVideos, ...cachedVipVideos];
     if (cachedVideos.length) {
       videos = cachedVideos;
@@ -306,6 +308,62 @@
     }
     setNotice("");
 
+    // Start the authenticated VIP requests immediately, in parallel with the
+    // slower public Supabase query. This avoids making VIP users wait for the
+    // Explore catalogue request before VIP metadata even begins loading.
+    const tg = window.Telegram?.WebApp;
+    const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
+    vipMembershipActive = false;
+    const vipListTask = (async () => {
+      if (!tg?.initData || !api) return [];
+      try {
+        const response = await fetch(`${api}/api/vip-videos`, {
+          headers: { "X-Telegram-Init-Data": tg.initData },
+          cache: "no-store"
+        });
+        if (!response.ok) {
+          if (response.status !== 401 && response.status !== 403) console.warn("VIP list request failed:", response.status);
+          return [];
+        }
+        const payload = await response.json();
+        const list = Array.isArray(payload) ? payload : payload.videos;
+        return Array.isArray(list) ? list.map((v) => ({ ...v, is_vip: true })) : [];
+      } catch (vipError) {
+        console.warn("VIP list unavailable:", vipError);
+        return [];
+      }
+    })();
+    const vipStatusTask = (async () => {
+      if (!tg?.initData || !api) return false;
+      try {
+        const response = await fetch(`${api}/api/vip-status`, {
+          headers: { "X-Telegram-Init-Data": tg.initData },
+          cache: "no-store"
+        });
+        if (response.ok) {
+          const status = await response.json();
+          return status.active === true;
+        }
+        console.warn("VIP status request failed:", response.status);
+      } catch (statusError) {
+        console.warn("VIP status unavailable:", statusError);
+      }
+      return false;
+    })();
+
+    // As soon as VIP metadata arrives, paint the VIP tab without waiting for the
+    // public/free catalogue query to finish. Keep the authenticated session cache.
+    vipListTask.then((earlyVipVideos) => {
+      latestVipVideos = earlyVipVideos;
+      cacheVipVideos(earlyVipVideos);
+      if (activeVideoView !== "vip" || !earlyVipVideos.length) return;
+      const freeSnapshot = videos.filter((v) => !v.is_vip);
+      videos = [...(freeSnapshot.length ? freeSnapshot : readCachedFreeVideos()), ...earlyVipVideos];
+      categories = ["All", ...new Set(videos.map((v) => v.category || "Entertainment"))];
+      renderCategories();
+      renderVideos();
+    });
+
     try {
       // The browser's public Supabase query intentionally returns Free videos only
       // under RLS. VIP metadata is fetched separately from the authenticated backend
@@ -321,52 +379,6 @@
       const freeVideos = (data || []).map((v) => ({ ...v, is_vip: false }));
       cacheFreeVideos(freeVideos);
       let vipVideos = [];
-      const tg = window.Telegram?.WebApp;
-      const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
-
-      // Fetch VIP catalogue and membership status in parallel. Previously these
-      // requests were sequential, adding an avoidable network round-trip.
-      vipMembershipActive = false;
-      const vipListTask = (async () => {
-        if (!tg?.initData || !api) return [];
-        try {
-          const response = await fetch(`${api}/api/vip-videos`, {
-            headers: { "X-Telegram-Init-Data": tg.initData },
-            cache: "no-store"
-          });
-          if (!response.ok) {
-            if (response.status !== 401 && response.status !== 403) {
-              console.warn("VIP list request failed:", response.status);
-            }
-            return [];
-          }
-          const payload = await response.json();
-          const list = Array.isArray(payload) ? payload : payload.videos;
-          return Array.isArray(list) ? list.map((v) => ({ ...v, is_vip: true })) : [];
-        } catch (vipError) {
-          console.warn("VIP list unavailable:", vipError);
-          return [];
-        }
-      })();
-
-      const vipStatusTask = (async () => {
-        if (!tg?.initData || !api) return false;
-        try {
-          const response = await fetch(`${api}/api/vip-status`, {
-            headers: { "X-Telegram-Init-Data": tg.initData },
-            cache: "no-store"
-          });
-          if (response.ok) {
-            const status = await response.json();
-            return status.active === true;
-          }
-          console.warn("VIP status request failed:", response.status);
-        } catch (statusError) {
-          console.warn("VIP status unavailable:", statusError);
-        }
-        return false;
-      })();
-
       [vipVideos, vipMembershipActive] = await Promise.all([vipListTask, vipStatusTask]);
       cacheVipVideos(vipVideos);
 
@@ -471,9 +483,6 @@
         return;
       }
 
-      // Show the branded VIP prompt quickly if server authorization is slow.
-      // If the user is already a VIP member, the prompt is hidden when authorization succeeds.
-      const vipPromptTimer = setTimeout(() => showModal("vip-required"), 180);
       try {
         const r = await fetch(`${api}/api/vip-video-url`, {
           method: "POST",
@@ -485,7 +494,6 @@
           cache: "no-store"
         });
         const result = await r.json().catch(() => ({}));
-        clearTimeout(vipPromptTimer);
         if (!r.ok || result.active === false) {
           vipMembershipActive = false;
           showModal("vip-required");
@@ -496,10 +504,8 @@
           throw new Error("The VIP API did not return a valid HTTPS signed URL.");
         }
         vipMembershipActive = true;
-        hideModal("vip-required");
         renderVideos();
       } catch (e) {
-        clearTimeout(vipPromptTimer);
         console.error("VIP playback authorization failed:", e);
         toast("VIP video could not be authorized. Please try again.");
         return;
@@ -573,6 +579,13 @@
   function switchVideoView(view) {
     activeVideoView = view === "vip" ? "vip" : "regular";
     activeCategory = "All";
+    // If VIP metadata was prefetched before the user tapped the tab, show it now
+    // instead of waiting for the separate Explore query to finish.
+    if (activeVideoView === "vip" && latestVipVideos.length) {
+      const freeSnapshot = videos.filter((v) => !v.is_vip);
+      videos = [...(freeSnapshot.length ? freeSnapshot : readCachedFreeVideos()), ...latestVipVideos];
+      categories = ["All", ...new Set(videos.map((v) => v.category || "Entertainment"))];
+    }
     const regular = $("regular-videos-btn"), vip = $("vip-videos-btn"), hero = $("vip-hero");
     if (regular) regular.classList.toggle("active", activeVideoView === "regular");
     if (vip) vip.classList.toggle("active", activeVideoView === "vip");
