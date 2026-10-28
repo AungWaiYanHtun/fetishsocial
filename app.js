@@ -34,6 +34,10 @@
   let vipMembershipActive = false;
   const VIDEO_CACHE_KEY = "videospace_public_videos_v1";
   const VIDEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  // VIP titles/thumbnails are cached only for this Telegram WebApp session.
+  // Private video URLs and storage paths are never cached here.
+  const VIP_CATALOG_CACHE_KEY = "videospace_vip_catalog_v1";
+  const VIP_CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 
   // Avoid logging configuration details in production.
 
@@ -237,12 +241,45 @@
     }
   }
 
+  function readCachedVipVideos() {
+    // Only reuse VIP catalogue metadata inside the authenticated Telegram WebApp session.
+    if (!window.Telegram?.WebApp?.initData) return [];
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(VIP_CATALOG_CACHE_KEY) || "null");
+      if (!cached || !Array.isArray(cached.videos) ||
+          !Number.isFinite(cached.savedAt) ||
+          Date.now() - cached.savedAt > VIP_CATALOG_CACHE_TTL_MS) return [];
+      return cached.videos.filter((v) => v && v.id).map((v) => ({ ...v, is_vip: true }));
+    } catch {
+      return [];
+    }
+  }
+
+  function cacheVipVideos(list) {
+    if (!window.Telegram?.WebApp?.initData) return;
+    try {
+      // Store display-only metadata, never playback URLs or storage paths.
+      const safeVideos = list.slice(0, 100).map((v) => ({
+        id: v.id, title: v.title, description: v.description, category: v.category,
+        thumbnail_url: v.thumbnail_url, views: v.views, created_at: v.created_at,
+        is_vip: true
+      }));
+      sessionStorage.setItem(VIP_CATALOG_CACHE_KEY, JSON.stringify({
+        savedAt: Date.now(), videos: safeVideos
+      }));
+    } catch (error) {
+      console.warn("VIP catalogue cache unavailable:", error);
+    }
+  }
+
   async function loadVideos() {
-    // Paint the last known public list immediately, then refresh it from Supabase.
-    // Never replace a usable cached list with a full-screen spinner during refresh.
+    // Paint cached catalogue immediately, then refresh in the background.
+    // VIP metadata is session-only; public videos use the existing public cache.
     const cachedFreeVideos = readCachedFreeVideos();
-    if (cachedFreeVideos.length) {
-      videos = cachedFreeVideos;
+    const cachedVipVideos = readCachedVipVideos();
+    const cachedVideos = [...cachedFreeVideos, ...cachedVipVideos];
+    if (cachedVideos.length) {
+      videos = cachedVideos;
       categories = ["All", ...new Set(videos.map((v) => v.category || "Entertainment"))];
       renderCategories();
       renderVideos();
@@ -331,6 +368,7 @@
       })();
 
       [vipVideos, vipMembershipActive] = await Promise.all([vipListTask, vipStatusTask]);
+      cacheVipVideos(vipVideos);
 
       // In the signed-in admin dashboard/preview, allow admins to see VIP
       // metadata directly when Telegram WebApp authentication is unavailable.
@@ -362,7 +400,7 @@
       // Keep cached public/free videos visible if refreshing fails.
       console.error("Load videos failed:", err);
       const detail = String(err?.message || err || "Unknown error").slice(0, 220);
-      if (cachedFreeVideos.length === 0) {
+      if (cachedVideos.length === 0) {
         videos = [];
         categories = ["All"];
         renderCategories();
@@ -370,7 +408,7 @@
         setNotice("Could not load videos: " + detail + ". Check the Supabase public key, RLS policy, and network connection.");
         setConnection("Video loading failed", false);
       } else {
-        videos = cachedFreeVideos;
+        videos = cachedVideos;
         categories = ["All", ...new Set(videos.map((v) => v.category || "Entertainment"))];
         renderCategories();
         renderVideos();

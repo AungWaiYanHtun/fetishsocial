@@ -10,11 +10,22 @@
   const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
   const tg = window.Telegram?.WebApp;
   // Package list changes infrequently; reuse it briefly so opening the modal again is fast.
-  const PACKAGE_CACHE_MS = 60_000;
+  const PACKAGE_CACHE_MS = 10 * 60_000;
   const PACKAGE_TIMEOUT_MS = 8_000;
+  const PACKAGE_STORAGE_KEY = "videospace_vip_packages_v1";
   let packageCache = null;
   let packageCacheAt = 0;
   let packageRequest = null;
+
+  // Reuse the last successful package response in this browser session.
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PACKAGE_STORAGE_KEY) || "null");
+    if (saved && Array.isArray(saved.packages) &&
+        Number.isFinite(saved.savedAt) && Date.now() - saved.savedAt < PACKAGE_CACHE_MS) {
+      packageCache = saved.packages;
+      packageCacheAt = saved.savedAt;
+    }
+  } catch {}
 
   function init() {
     const statusEl = document.getElementById("vip-status");
@@ -33,6 +44,10 @@
     if (statusEl && tg?.initData) {
       loadVipStatus(statusEl);
     }
+
+    // Warm the VIP package endpoint while the user browses, not only after tapping Get VIP.
+    // Fail silently here; the modal still displays its normal retry message if needed.
+    getPackages().catch(() => {});
   }
 
   function showError(message) {
@@ -89,6 +104,11 @@
         const packages = Array.isArray(data.packages) ? data.packages : [];
         packageCache = packages;
         packageCacheAt = Date.now();
+        try {
+          sessionStorage.setItem(PACKAGE_STORAGE_KEY, JSON.stringify({
+            savedAt: packageCacheAt, packages
+          }));
+        } catch {}
         return packages;
       })
       .finally(() => {
