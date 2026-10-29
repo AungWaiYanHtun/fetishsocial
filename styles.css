@@ -160,4 +160,4 @@ body.vip-plans-open{overflow:hidden;}
 .vip-required-panel h2{margin:8px 0 12px}
 .vip-required-panel .muted{font-size:14px;margin:0 auto 22px;max-width:280px}
 .vip-required-actions{display:flex;justify-content:center;gap:10px}
-.vip-required-actions .button{min-width:190px;padding:13px 18px}
+.vip-required-actions .button{min-width:112px;padding:13px 18px}

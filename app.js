@@ -33,6 +33,7 @@
   let activeVideoView = "regular";
   let vipMembershipActive = false;
   let latestVipVideos = [];
+  let vipCatalogLoading = false;
   const VIDEO_CACHE_KEY = "videospace_public_videos_v1";
   const VIDEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   // VIP titles/thumbnails are cached only for this Telegram WebApp session.
@@ -138,6 +139,13 @@
     if (!grid || !search) return;
 
     const q = search.value.trim().toLowerCase();
+    if (activeVideoView === "vip" && vipCatalogLoading &&
+        !videos.some((v) => v.is_vip) && !latestVipVideos.length) {
+      grid.innerHTML = '<div class="loading-card"><span class="spinner"></span><p>Loading VIP videos…</p></div>';
+      if (count) count.textContent = "Loading VIP videos…";
+      if (empty) empty.classList.add("hidden");
+      return;
+    }
     const filtered = videos.filter((v) =>
       (activeVideoView === "vip" ? !!v.is_vip : !v.is_vip) &&
       (activeCategory === "All" ||
@@ -314,6 +322,7 @@
     const tg = window.Telegram?.WebApp;
     const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
     vipMembershipActive = false;
+    vipCatalogLoading = true;
     const vipListTask = (async () => {
       if (!tg?.initData || !api) return [];
       try {
@@ -331,6 +340,8 @@
       } catch (vipError) {
         console.warn("VIP list unavailable:", vipError);
         return [];
+      } finally {
+        vipCatalogLoading = false;
       }
     })();
     const vipStatusTask = (async () => {
@@ -596,7 +607,19 @@
     renderVideos();
   }
   $("regular-videos-btn")?.addEventListener("click", () => switchVideoView("regular"));
-  $("vip-videos-btn")?.addEventListener("click", () => switchVideoView("vip"));
+  $("vip-videos-btn")?.addEventListener("click", () => {
+    switchVideoView("vip");
+    if (!latestVipVideos.length && !videos.some((v) => v.is_vip)) {
+      const grid = $("video-grid");
+      const count = $("result-count");
+      const empty = $("empty-state");
+      vipCatalogLoading = true;
+      if (grid) grid.innerHTML = '<div class="loading-card"><span class="spinner"></span><p>Loading VIP videos…</p></div>';
+      if (count) count.textContent = "Loading VIP videos…";
+      if (empty) empty.classList.add("hidden");
+      loadVideos();
+    }
+  });
   $("vip-page-buy")?.addEventListener("click", () => {
     const buy = $("vip-buy");
     if (buy) buy.click();
