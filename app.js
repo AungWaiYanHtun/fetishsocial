@@ -34,6 +34,7 @@
   let vipMembershipActive = false;
   let latestVipVideos = [];
   let vipCatalogLoading = false;
+  let videosLoadPromise = null;
   const VIDEO_CACHE_KEY = "videospace_public_videos_v1";
   const VIDEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   // VIP titles/thumbnails are cached only for this Telegram WebApp session.
@@ -281,7 +282,17 @@
     }
   }
 
-  async function loadVideos() {
+  function loadVideos() {
+    // Reuse the in-flight catalogue request. This prevents tapping VIP while
+    // the first page load is still running from starting a duplicate request.
+    if (videosLoadPromise) return videosLoadPromise;
+    videosLoadPromise = loadVideosInternal().finally(() => {
+      videosLoadPromise = null;
+    });
+    return videosLoadPromise;
+  }
+
+  async function loadVideosInternal() {
     // Paint cached catalogue immediately, then refresh in the background.
     // VIP metadata is session-only; public videos use the existing public cache.
     const cachedFreeVideos = readCachedFreeVideos();
@@ -324,7 +335,10 @@
     vipMembershipActive = false;
     vipCatalogLoading = true;
     const vipListTask = (async () => {
-      if (!tg?.initData || !api) return [];
+      if (!tg?.initData || !api) {
+        vipCatalogLoading = false;
+        return [];
+      }
       try {
         const response = await fetch(`${api}/api/vip-videos`, {
           headers: { "X-Telegram-Init-Data": tg.initData },
