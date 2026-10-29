@@ -35,6 +35,7 @@
   let latestVipVideos = [];
   let vipCatalogLoading = false;
   let videosLoadPromise = null;
+  let vipCatalogPromise = null;
   const VIDEO_CACHE_KEY = "videospace_public_videos_v1";
   const VIDEO_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   // VIP titles/thumbnails are cached only for this Telegram WebApp session.
@@ -282,6 +283,48 @@
     }
   }
 
+  // Start loading the authenticated VIP catalogue as soon as the Mini App script
+  // initializes, instead of waiting for Supabase session/admin initialization or
+  // the user to tap the VIP tab. This makes the VIP tab ready sooner on first open.
+  function prefetchVipCatalog() {
+    if (vipCatalogPromise) return vipCatalogPromise;
+    const cached = readCachedVipVideos();
+    if (cached.length) {
+      latestVipVideos = cached;
+    }
+    const tg = window.Telegram?.WebApp;
+    const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
+    if (!tg?.initData || !api) return Promise.resolve(cached);
+
+    vipCatalogLoading = true;
+    vipCatalogPromise = fetch(`${api}/api/vip-videos`, {
+      headers: { "X-Telegram-Init-Data": tg.initData },
+      cache: "no-store"
+    }).then(async (response) => {
+      if (!response.ok) throw new Error(`VIP list request failed (${response.status})`);
+      const payload = await response.json();
+      const list = Array.isArray(payload) ? payload : payload.videos;
+      const safeList = Array.isArray(list) ? list.map((v) => ({ ...v, is_vip: true })) : [];
+      latestVipVideos = safeList;
+      cacheVipVideos(safeList);
+      if (activeVideoView === "vip" && safeList.length) {
+        const freeSnapshot = videos.filter((v) => !v.is_vip);
+        videos = [...(freeSnapshot.length ? freeSnapshot : readCachedFreeVideos()), ...safeList];
+        categories = ["All", ...new Set(videos.map((v) => v.category || "Entertainment"))];
+        renderCategories();
+        renderVideos();
+      }
+      return safeList;
+    }).catch((error) => {
+      console.warn("VIP list prefetch unavailable:", error);
+      vipCatalogPromise = null; // allow the normal load path to retry
+      return cached;
+    }).finally(() => {
+      vipCatalogLoading = false;
+    });
+    return vipCatalogPromise;
+  }
+
   function loadVideos() {
     // Reuse the in-flight catalogue request. This prevents tapping VIP while
     // the first page load is still running from starting a duplicate request.
@@ -334,30 +377,7 @@
     const api = (cfg.VIP_API_URL || "").replace(/\/$/, "");
     vipMembershipActive = false;
     vipCatalogLoading = true;
-    const vipListTask = (async () => {
-      if (!tg?.initData || !api) {
-        vipCatalogLoading = false;
-        return [];
-      }
-      try {
-        const response = await fetch(`${api}/api/vip-videos`, {
-          headers: { "X-Telegram-Init-Data": tg.initData },
-          cache: "no-store"
-        });
-        if (!response.ok) {
-          if (response.status !== 401 && response.status !== 403) console.warn("VIP list request failed:", response.status);
-          return [];
-        }
-        const payload = await response.json();
-        const list = Array.isArray(payload) ? payload : payload.videos;
-        return Array.isArray(list) ? list.map((v) => ({ ...v, is_vip: true })) : [];
-      } catch (vipError) {
-        console.warn("VIP list unavailable:", vipError);
-        return [];
-      } finally {
-        vipCatalogLoading = false;
-      }
-    })();
+    const vipListTask = prefetchVipCatalog();
     const vipStatusTask = (async () => {
       if (!tg?.initData || !api) return false;
       try {
@@ -1152,5 +1172,8 @@
     }
   }
 
+  // Warm the VIP catalogue in parallel with the regular app initialization.
+  // If the user opens VIP after startup, its metadata may already be ready.
+  prefetchVipCatalog();
   init();
 })();
