@@ -161,3 +161,67 @@ body.vip-plans-open{overflow:hidden;}
 .vip-required-panel .muted{font-size:14px;margin:0 auto 22px;max-width:280px}
 .vip-required-actions{display:flex;justify-content:center;gap:10px}
 .vip-required-actions .button{min-width:112px;padding:13px 18px}
+
+/* Theme-only polish: preserve all existing layout, content, and interactions. */
+:root{
+  --bg:#090907;
+  --panel:#11110e;
+  --panel2:#191710;
+  --line:rgba(222,181,83,.28);
+  --gold:#e2b84f;
+  --gold2:#ffe39a;
+  --text:#f8f4eb;
+  --muted:#a49d91;
+  --shadow:0 24px 70px rgba(0,0,0,.62);
+}
+html,body{background-color:#090907}
+body{
+  background:
+    radial-gradient(ellipse at 100% 42%,rgba(153,103,22,.19) 0%,rgba(94,62,13,.08) 24%,transparent 48%),
+    radial-gradient(ellipse at 0% 78%,rgba(110,75,19,.15) 0%,transparent 43%),
+    linear-gradient(135deg,#10100e 0%,#080807 52%,#11100b 100%);
+  background-attachment:fixed;
+}
+body::before{
+  content:"";position:fixed;pointer-events:none;z-index:-1;
+  width:125vw;height:42vh;right:-38vw;bottom:13vh;
+  border:1px solid rgba(219,174,62,.19);border-left-color:transparent;border-top-color:transparent;
+  border-radius:50%;transform:rotate(-18deg);
+  box-shadow:0 12px 32px -30px rgba(255,199,72,.85);
+}
+.ambient{opacity:.16;filter:blur(100px)}
+.ambient-one{background:#b57c1d}
+.ambient-two{background:#79531a}
+.topbar{background:rgba(9,9,7,.88);border-bottom-color:rgba(226,184,79,.23)}
+.brand-mark{background:linear-gradient(145deg,#ffe6a1 0%,#d4a43c 62%,#9a6a18 100%);box-shadow:0 5px 26px rgba(222,174,63,.22)}
+.button{border-radius:999px;transition:transform .2s,filter .2s,box-shadow .2s}
+.button-gold{
+  background:linear-gradient(115deg,#ffe69b 0%,#e9bd57 52%,#bd8825 100%);
+  color:#171106;border-color:rgba(255,226,151,.65);
+  box-shadow:0 7px 27px rgba(222,174,63,.19),inset 0 1px 0 rgba(255,255,255,.32);
+}
+.button-quiet{background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.015));border-color:rgba(221,190,130,.3);color:#f6f0e5}
+.hero{background:radial-gradient(ellipse at 78% 48%,rgba(168,119,28,.17),transparent 48%),linear-gradient(120deg,rgba(25,23,17,.96),rgba(9,9,7,.96) 68%);border-color:rgba(224,183,79,.28)}
+.searchbox,.icon-button{background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.012));border-color:rgba(221,190,130,.26)}
+.icon-button{border-radius:18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.category{background:rgba(20,19,15,.84);border-color:rgba(221,190,130,.25);color:#c7bdab}
+.category.active{background:linear-gradient(115deg,#ffe69b 0%,#e7bb55 55%,#b98529 100%);color:#171106;border-color:rgba(255,224,141,.7);box-shadow:0 5px 20px rgba(218,170,57,.13)}
+.video-card{background:linear-gradient(150deg,rgba(26,24,18,.97),rgba(10,10,8,.98));border-color:rgba(221,190,130,.27)}
+.video-card:hover{border-color:rgba(245,205,105,.68)}
+.play-badge{background:linear-gradient(135deg,#ffe69b,#d6a43b);box-shadow:0 4px 20px rgba(222,174,63,.22)}
+footer{border-top-color:rgba(221,190,130,.24);background:rgba(7,7,6,.22)}
+.modal-panel,.player-panel{background:linear-gradient(145deg,#1b1912,#0b0b09 80%);border-color:rgba(224,183,79,.32)}
+.modal-panel input,.modal-panel textarea,.modal-panel select{background:#0b0b09;border-color:rgba(221,190,130,.2)}
+.custom-play{background:linear-gradient(135deg,#ffe69b,#d6a43b);color:#171106;box-shadow:0 4px 20px rgba(222,174,63,.25)}
+.player-menu{background:#17150f;border-color:rgba(221,190,130,.32);border-radius:12px}
+.player-menu-item{border-radius:8px}
+.player-speed-options button{background:#242015;border-radius:7px}
+.custom-controls button{color:#ffe09a}
+.vip-plans-panel{background:linear-gradient(145deg,#211b10,#0b0b09 78%);border-color:rgba(235,195,94,.65)}
+.vip-plan-option{background:#11100c;border-color:rgba(221,190,130,.28)}
+.vip-plans-confirm,.vip-unlock-button{background:linear-gradient(115deg,#ffe69b 0%,#e7bb55 55%,#b98529 100%);box-shadow:0 6px 22px rgba(218,170,57,.15)}
+.delete-confirm-card{background:linear-gradient(145deg,#1b1912,#0d0c09);border-color:rgba(221,190,130,.42)}
+.delete-confirm-cancel{background:#282319;border-color:#a7833b}
+@media(max-width:520px){
+  .button{border-radius:999px}
+}
